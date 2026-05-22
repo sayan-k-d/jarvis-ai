@@ -2,8 +2,8 @@
 
 const PARENT_ORIGIN =
   typeof window !== "undefined" && window.location.hostname === "localhost"
-    ? "http://localhost:3000"
-    : "https://jharvis.com";
+    ? "https://jharvis.com"
+    : "http://localhost:3000";
 
 export function getTokenFromParent() {
   if (typeof window === "undefined") return Promise.resolve(null);
