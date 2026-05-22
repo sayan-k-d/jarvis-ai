@@ -1,0 +1,505 @@
+import { useEffect, useRef } from "react";
+import { marketData } from "../data/staticData.js";
+
+function MarketIndexChart() {
+  const ref = useRef(null);
+  useEffect(() => {
+    const H = window.Highcharts;
+    if (!H || !ref.current) return;
+    const chart = H.chart(ref.current, {
+      chart: {
+        type: "line",
+        backgroundColor: "transparent",
+        style: { fontFamily: "Inter, sans-serif" },
+      },
+      title: { text: null },
+      credits: { enabled: false },
+      legend: {
+        itemStyle: { color: "#94a3b8" },
+        itemHoverStyle: { color: "#f8fafc" },
+      },
+      xAxis: {
+        categories: ["Mon", "Tue", "Wed", "Thu", "Fri"],
+        labels: { style: { color: "#94a3b8" } },
+        gridLineColor: "rgba(148,163,184,0.1)",
+        lineColor: "rgba(148,163,184,0.1)",
+      },
+      yAxis: {
+        title: { text: null },
+        labels: { style: { color: "#94a3b8" } },
+        gridLineColor: "rgba(148,163,184,0.1)",
+      },
+      tooltip: {
+        backgroundColor: "#1a2332",
+        borderColor: "rgba(255,255,255,0.08)",
+        style: { color: "#f8fafc" },
+      },
+      series: [
+        {
+          name: "S&P 500",
+          data: [5200, 5235, 5248, 5260, 5278],
+          color: "#10b981",
+          lineWidth: 2,
+          marker: { enabled: false },
+        },
+        {
+          name: "NASDAQ",
+          data: [16200, 16350, 16400, 16420, 16485],
+          color: "#3b82f6",
+          lineWidth: 2,
+          marker: { enabled: false },
+        },
+        {
+          name: "DOW",
+          data: [38450, 38600, 38700, 38800, 38892],
+          color: "#f59e0b",
+          lineWidth: 2,
+          marker: { enabled: false },
+        },
+      ],
+    });
+    return () => {
+      try {
+        chart.destroy();
+      } catch {}
+    };
+  }, []);
+  return <div ref={ref} style={{ height: "100%" }} />;
+}
+
+function SectorChart() {
+  const ref = useRef(null);
+  useEffect(() => {
+    const H = window.Highcharts;
+    if (!H || !ref.current) return;
+    const chart = H.chart(ref.current, {
+      chart: {
+        type: "bar",
+        backgroundColor: "transparent",
+        style: { fontFamily: "Inter, sans-serif" },
+      },
+      title: { text: null },
+      credits: { enabled: false },
+      legend: { enabled: false },
+      xAxis: {
+        categories: marketData.sectors.map((s) => s.name),
+        labels: { style: { color: "#94a3b8" } },
+        gridLineColor: "rgba(148,163,184,0.1)",
+        lineColor: "rgba(148,163,184,0.1)",
+      },
+      yAxis: {
+        title: { text: null },
+        labels: { style: { color: "#94a3b8" }, format: "{value}%" },
+        gridLineColor: "rgba(148,163,184,0.1)",
+      },
+      tooltip: {
+        backgroundColor: "#1a2332",
+        borderColor: "rgba(255,255,255,0.08)",
+        style: { color: "#f8fafc" },
+        valueSuffix: "%",
+      },
+      series: [
+        {
+          data: marketData.sectors.map((s) => ({
+            y: s.change,
+            color: s.change >= 0 ? "#10b981" : "#ef4444",
+          })),
+        },
+      ],
+    });
+    return () => {
+      try {
+        chart.destroy();
+      } catch {}
+    };
+  }, []);
+  return <div ref={ref} style={{ height: "100%" }} />;
+}
+
+export default function SectionMarket({ onOpenModal, onAskAI }) {
+  return (
+    <section id="market" className="section active">
+      <div className="header">
+        <div className="header-left">
+          <h2>
+            <i
+              className="fas fa-globe"
+              style={{ color: "var(--accent-blue)", marginRight: 12 }}
+            ></i>
+            Market Intelligence
+          </h2>
+          <p>{`"What changed this week?" — AI-powered market analysis`}</p>
+        </div>
+        <div className="header-right">
+          <button className="btn btn-secondary">
+            <i className="fas fa-sync-alt"></i> Refresh Data
+          </button>
+          <button
+            className="btn btn-primary"
+            onClick={() => onAskAI("Give me a market summary")}
+          >
+            <i className="fas fa-robot"></i> Ask AI
+          </button>
+        </div>
+      </div>
+
+      <div
+        className="chart-card"
+        style={{ marginBottom: 24, borderLeft: "4px solid var(--accent-blue)" }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+          }}
+        >
+          <div>
+            <h3 style={{ marginBottom: 12 }}>
+              <i
+                className="fas fa-brain"
+                style={{ color: "var(--accent-cyan)", marginRight: 8 }}
+              ></i>
+              AI Market Summary
+            </h3>
+            <p
+              style={{
+                fontSize: "0.9em",
+                lineHeight: 1.7,
+                color: "var(--text-secondary)",
+              }}
+            >
+              This week saw a{" "}
+              <strong style={{ color: "var(--accent-emerald)" }}>
+                broad market rally
+              </strong>{" "}
+              driven by stronger-than-expected earnings from mega-cap tech. The
+              S&amp;P 500 gained <strong>1.8%</strong> while the Nasdaq surged{" "}
+              <strong>2.4%</strong>.{" "}
+              <strong style={{ color: "var(--accent-rose)" }}>
+                Energy (-1.2%)
+              </strong>{" "}
+              and{" "}
+              <strong style={{ color: "var(--accent-rose)" }}>
+                Utilities (-0.8%)
+              </strong>{" "}
+              {`lagged. The Fed's dovish tone boosted sentiment, with rate-cut
+              expectations pushing 10-year yields below 4.5%.`}
+            </p>
+          </div>
+          <div style={{ textAlign: "right", marginLeft: 24 }}>
+            <div
+              style={{
+                background: "var(--bg-tertiary)",
+                padding: "12px 16px",
+                borderRadius: 8,
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "0.65em",
+                  color: "var(--text-muted)",
+                  marginBottom: 4,
+                }}
+              >
+                Market Sentiment
+              </div>
+              <div
+                style={{
+                  fontSize: "1.4em",
+                  fontWeight: 700,
+                  color: "var(--accent-emerald)",
+                }}
+              >
+                Bullish
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div
+        className="stats-grid"
+        style={{ gridTemplateColumns: "repeat(5, 1fr)", marginBottom: 24 }}
+      >
+        <div className="stat-card">
+          <div className="stat-card-header">
+            <h4>S&amp;P 500</h4>
+            <i
+              className="fas fa-chart-line"
+              style={{ color: "var(--accent-emerald)" }}
+            ></i>
+          </div>
+          <div className="stat-value" style={{ fontSize: "1.4em" }}>
+            5,278
+          </div>
+          <div className="stat-change positive">
+            <i className="fas fa-arrow-up"></i>+1.8% this week
+          </div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-card-header">
+            <h4>NASDAQ</h4>
+            <i
+              className="fas fa-chart-line"
+              style={{ color: "var(--accent-blue)" }}
+            ></i>
+          </div>
+          <div className="stat-value" style={{ fontSize: "1.4em" }}>
+            16,485
+          </div>
+          <div className="stat-change positive">
+            <i className="fas fa-arrow-up"></i>+2.4% this week
+          </div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-card-header">
+            <h4>DOW</h4>
+            <i
+              className="fas fa-industry"
+              style={{ color: "var(--accent-amber)" }}
+            ></i>
+          </div>
+          <div className="stat-value" style={{ fontSize: "1.4em" }}>
+            38,892
+          </div>
+          <div className="stat-change positive">
+            <i className="fas fa-arrow-up"></i>+1.2% this week
+          </div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-card-header">
+            <h4>VIX</h4>
+            <i
+              className="fas fa-chart-area"
+              style={{ color: "var(--accent-purple)" }}
+            ></i>
+          </div>
+          <div
+            className="stat-value"
+            style={{ fontSize: "1.4em", color: "var(--accent-emerald)" }}
+          >
+            14.2
+          </div>
+          <div className="stat-change">
+            <span style={{ color: "var(--accent-emerald)" }}>
+              Low volatility
+            </span>
+          </div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-card-header">
+            <h4>10Y Yield</h4>
+            <i
+              className="fas fa-percentage"
+              style={{ color: "var(--accent-cyan)" }}
+            ></i>
+          </div>
+          <div className="stat-value" style={{ fontSize: "1.4em" }}>
+            4.48%
+          </div>
+          <div className="stat-change negative">
+            <i className="fas fa-arrow-down"></i>-0.12% this week
+          </div>
+        </div>
+      </div>
+
+      <div className="charts-row" style={{ gridTemplateColumns: "1.5fr 1fr" }}>
+        <div className="chart-card">
+          <div className="chart-header">
+            <h3>Index Performance</h3>
+            <div className="chart-tabs">
+              {["1W", "1M", "3M"].map((t) => (
+                <button
+                  key={t}
+                  className={`chart-tab${t === "1W" ? " active" : ""}`}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="chart-container">
+            <MarketIndexChart />
+          </div>
+        </div>
+        <div className="chart-card">
+          <div className="chart-header">
+            <h3>Sector Performance</h3>
+          </div>
+          <div className="chart-container">
+            <SectorChart />
+          </div>
+        </div>
+      </div>
+
+      <div className="two-column" style={{ marginTop: 24 }}>
+        <div className="chart-card">
+          <div className="chart-header">
+            <h3>
+              <i
+                className="fas fa-arrow-up"
+                style={{ color: "var(--accent-emerald)", marginRight: 8 }}
+              ></i>
+              Top Gainers
+            </h3>
+          </div>
+          {marketData.topGainers.slice(0, 5).map((s) => (
+            <div
+              key={s.symbol}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                padding: 12,
+                borderBottom: "1px solid var(--border-color)",
+                cursor: "pointer",
+              }}
+              onClick={() => onOpenModal(s.symbol)}
+            >
+              <div
+                className="stock-logo"
+                style={{ width: 36, height: 36, marginRight: 12 }}
+              >
+                {s.symbol.slice(0, 2)}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 500, fontSize: "0.85em" }}>
+                  {s.symbol}
+                </div>
+                <div style={{ fontSize: "0.7em", color: "var(--text-muted)" }}>
+                  {s.reason}
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div
+                  style={{
+                    color: "var(--accent-emerald)",
+                    fontWeight: 600,
+                    fontSize: "0.9em",
+                  }}
+                >
+                  +{s.change.toFixed(2)}%
+                </div>
+                <div style={{ fontSize: "0.7em", color: "var(--text-muted)" }}>
+                  ${s.price.toFixed(2)}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="chart-card">
+          <div className="chart-header">
+            <h3>
+              <i
+                className="fas fa-arrow-down"
+                style={{ color: "var(--accent-rose)", marginRight: 8 }}
+              ></i>
+              Top Losers
+            </h3>
+          </div>
+          {marketData.topLosers.slice(0, 5).map((s) => (
+            <div
+              key={s.symbol}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                padding: 12,
+                borderBottom: "1px solid var(--border-color)",
+                cursor: "pointer",
+              }}
+              onClick={() => onOpenModal(s.symbol)}
+            >
+              <div
+                className="stock-logo"
+                style={{ width: 36, height: 36, marginRight: 12 }}
+              >
+                {s.symbol.slice(0, 2)}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 500, fontSize: "0.85em" }}>
+                  {s.symbol}
+                </div>
+                <div style={{ fontSize: "0.7em", color: "var(--text-muted)" }}>
+                  {s.reason}
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div
+                  style={{
+                    color: "var(--accent-rose)",
+                    fontWeight: 600,
+                    fontSize: "0.9em",
+                  }}
+                >
+                  {s.change.toFixed(2)}%
+                </div>
+                <div style={{ fontSize: "0.7em", color: "var(--text-muted)" }}>
+                  ${s.price.toFixed(2)}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="chart-card" style={{ marginTop: 24 }}>
+        <div className="chart-header">
+          <h3>
+            <i
+              className="fas fa-calendar-alt"
+              style={{ color: "var(--accent-amber)", marginRight: 8 }}
+            ></i>
+            Key Market Events This Week
+          </h3>
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(5, 1fr)",
+            gap: 12,
+          }}
+        >
+          {marketData.events.map((ev) => (
+            <div
+              key={ev.date}
+              style={{
+                background: "var(--bg-tertiary)",
+                padding: 16,
+                borderRadius: 10,
+                textAlign: "center",
+              }}
+            >
+              <div
+                style={{
+                  background:
+                    ev.sentiment === "positive"
+                      ? "rgba(16,185,129,0.2)"
+                      : "rgba(245,158,11,0.2)",
+                  color:
+                    ev.sentiment === "positive"
+                      ? "var(--accent-emerald)"
+                      : "var(--accent-amber)",
+                  padding: "4px 8px",
+                  borderRadius: 4,
+                  fontSize: "0.65em",
+                  marginBottom: 8,
+                  display: "inline-block",
+                }}
+              >
+                {ev.date}
+              </div>
+              <div
+                style={{ fontWeight: 600, fontSize: "0.8em", marginBottom: 4 }}
+              >
+                {ev.title}
+              </div>
+              <div style={{ fontSize: "0.7em", color: "var(--text-muted)" }}>
+                {ev.impact}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
