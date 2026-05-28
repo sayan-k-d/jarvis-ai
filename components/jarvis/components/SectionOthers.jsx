@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   transactions,
   opportunities,
@@ -11,79 +11,133 @@ import {
   getChangeClass,
   getChangeSign,
 } from "../utils/helpers.js";
+import { sendChatMessage } from "../services/aiServices.js";
+import { Chart, registerables } from "chart.js";
 
+Chart.register(...registerables);
 // ── Portfolio Intelligence ────────────────────────────────────
 
-function BenchmarkChart() {
-  const ref = useRef(null);
+export function BenchmarkChart() {
+  const canvasRef = useRef(null);
+
   useEffect(() => {
-    const H = window.Highcharts;
-    if (!H || !ref.current) return;
-    const chart = H.chart(ref.current, {
-      chart: {
-        type: "area",
-        backgroundColor: "transparent",
-        style: { fontFamily: "Inter, sans-serif" },
-      },
-      title: { text: null },
-      credits: { enabled: false },
-      legend: {
-        itemStyle: { color: "#94a3b8" },
-        itemHoverStyle: { color: "#f8fafc" },
-      },
-      xAxis: {
-        categories: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
-        labels: { style: { color: "#94a3b8" } },
-        gridLineColor: "rgba(148,163,184,0.1)",
-        lineColor: "rgba(148,163,184,0.1)",
-      },
-      yAxis: {
-        title: { text: null },
-        labels: { style: { color: "#94a3b8" }, format: "{value}%" },
-        gridLineColor: "rgba(148,163,184,0.1)",
-      },
-      tooltip: {
-        backgroundColor: "#1a2332",
-        borderColor: "rgba(255,255,255,0.08)",
-        style: { color: "#f8fafc" },
-        valueSuffix: "%",
-      },
-      series: [
-        {
-          name: "Portfolio",
-          data: [100, 104, 108, 112, 115, 120],
-          color: "#06b6d4",
-          fillColor: {
-            linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
-            stops: [
-              [0, "rgba(6,182,212,0.2)"],
-              [1, "rgba(6,182,212,0)"],
-            ],
+    const ctx = canvasRef.current;
+    let myBenchmarkChart = null;
+
+    if (ctx) {
+      myBenchmarkChart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+          datasets: [
+            {
+              label: "Portfolio",
+              data: [100, 104, 108, 112, 115, 120],
+              borderColor: "#06b6d4",
+              backgroundColor: "rgba(6, 182, 212, 0.1)", // Area fill color
+              fill: true,
+              borderWidth: 2,
+              tension: 0.3, // Subtle smoothing to match area aesthetic
+              pointRadius: 0,
+              pointHoverRadius: 5,
+            },
+            {
+              label: "S&P 500",
+              data: [100, 102, 105, 107, 109, 112],
+              borderColor: "#64748b",
+              backgroundColor: "transparent",
+              fill: false,
+              borderWidth: 1.5,
+              borderDash: [5, 5], // Mimics the Highcharts 'Dash' style
+              tension: 0.3,
+              pointRadius: 0,
+              pointHoverRadius: 5,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: true,
+              position: "top",
+              labels: {
+                color: "#94a3b8",
+                boxWidth: 12,
+                padding: 20,
+                font: { family: "Inter, sans-serif" },
+              },
+            },
+            tooltip: {
+              backgroundColor: "#1a2332",
+              borderColor: "rgba(255,255,255,0.08)",
+              borderWidth: 1,
+              titleColor: "#f8fafc",
+              bodyColor: "#f8fafc",
+              callbacks: {
+                // Formats tooltip values to include the % suffix
+                label: (context) =>
+                  ` ${context.dataset.label}: ${context.raw}%`,
+              },
+            },
           },
-          lineWidth: 2,
-          marker: { enabled: false },
+          scales: {
+            x: {
+              grid: { color: "rgba(148, 163, 184, 0.1)" },
+              ticks: { color: "#94a3b8" },
+            },
+            y: {
+              grid: { color: "rgba(148, 163, 184, 0.1)" },
+              ticks: {
+                color: "#94a3b8",
+                // Appends the % sign to the y-axis values
+                callback: (v) => v + "%",
+              },
+            },
+          },
         },
-        {
-          name: "S&P 500",
-          data: [100, 102, 105, 107, 109, 112],
-          color: "#64748b",
-          dashStyle: "Dash",
-          fillColor: "transparent",
-          lineWidth: 1.5,
-          marker: { enabled: false },
-        },
-      ],
-    });
+      });
+    }
+
+    // Clean up chart instance cleanly on unmount to avoid canvas conflicts
     return () => {
-      try {
-        chart.destroy();
-      } catch {}
+      if (myBenchmarkChart) {
+        myBenchmarkChart.destroy();
+      }
     };
   }, []);
-  return <div ref={ref} style={{ height: "100%" }} />;
+
+  return (
+    <div style={{ height: "100%", width: "100%" }}>
+      <canvas ref={canvasRef} />
+    </div>
+  );
 }
 
 export function SectionPortfolioIntel({ onAskAI }) {
+  const [portfolioIntel, setportfolioIntel] = useState("");
+  const [isLoadingIntel, setIsLoadingIntel] = useState(true);
+
+  useEffect(() => {
+    const getInitialSummary = async () => {
+      try {
+        setIsLoadingIntel(true);
+        // Call the service with your fixed prompt
+        const response = await sendChatMessage(
+          "Analyze my portfolio performance",
+        );
+        setportfolioIntel(response);
+      } catch (error) {
+        console.error("Error fetching market summary:", error);
+        setportfolioIntel("Unable to load the market summary at this time.");
+      } finally {
+        setIsLoadingIntel(false);
+      }
+    };
+
+    getInitialSummary();
+  }, []);
   return (
     <section id="portfolio-intel" className="section active">
       <div className="header">
@@ -131,15 +185,26 @@ export function SectionPortfolioIntel({ onAskAI }) {
             color: "var(--text-secondary)",
           }}
         >
-          Your portfolio is{" "}
-          <strong style={{ color: "var(--accent-emerald)" }}>
-            overweight Technology (42%)
-          </strong>{" "}
-          vs benchmark (28%). Top contributor <strong>NVDA (+180bps)</strong>{" "}
-          and <strong>META (+120bps)</strong>{" "}
-          {`drove this week's outperformance.`}
-          <strong> TSLA (-50bps)</strong> was the main drag. Consider adding{" "}
-          <strong>AAPL</strong> for sector balance and dividend income.
+          {isLoadingIntel ? (
+            <span style={{ opacity: 0.6, fontStyle: "italic" }}>
+              Generating live market insights...
+            </span>
+          ) : portfolioIntel.includes("I currently do not have access") ? (
+            <span>
+              Your portfolio is{" "}
+              <strong style={{ color: "var(--accent-emerald)" }}>
+                overweight Technology (42%)
+              </strong>{" "}
+              vs benchmark (28%). Top contributor{" "}
+              <strong>NVDA (+180bps)</strong> and{" "}
+              <strong>META (+120bps)</strong>{" "}
+              {`drove this week's outperformance.`}
+              <strong> TSLA (-50bps)</strong> was the main drag. Consider adding{" "}
+              <strong>AAPL</strong> for sector balance and dividend income.
+            </span>
+          ) : (
+            portfolioIntel
+          )}
         </p>
       </div>
 
@@ -334,6 +399,28 @@ export function SectionPortfolioIntel({ onAskAI }) {
 // ── Opportunity Engine ────────────────────────────────────────
 
 export function SectionOpportunities({ onOpenModal, onAskAI }) {
+  const [opportunity, setOpportunities] = useState("");
+  const [isLoadingOpportunities, setIsLoadingOpportunities] = useState(true);
+
+  useEffect(() => {
+    const getInitialSummary = async () => {
+      try {
+        setIsLoadingOpportunities(true);
+        // Call the service with your fixed prompt
+        const response = await sendChatMessage(
+          "Which Sectors are stocks are best right now , Which sectors or stocks should i look for investements ? Give reasons why should we choose that stock",
+        );
+        setOpportunities(response);
+      } catch (error) {
+        console.error("Error fetching market summary:", error);
+        setOpportunities("Unable to load the market summary at this time.");
+      } finally {
+        setIsLoadingOpportunities(false);
+      }
+    };
+
+    getInitialSummary();
+  }, []);
   return (
     <section id="opportunities" className="section active">
       <div className="header">
@@ -383,15 +470,25 @@ export function SectionOpportunities({ onOpenModal, onAskAI }) {
             color: "var(--text-secondary)",
           }}
         >
-          Found{" "}
-          <strong style={{ color: "var(--accent-amber)" }}>
-            8 high-potential opportunities
-          </strong>{" "}
-          based on price-fundamental divergence and momentum signals.
-          <strong> NVDA</strong> leads with exceptional AI-driven growth.
-          <strong> GOOGL</strong> offers the best value with 30% upside
-          potential.
-          <strong> 3 stocks</strong> show high-conviction buy signals.
+          {isLoadingOpportunities ? (
+            <span style={{ opacity: 0.6, fontStyle: "italic" }}>
+              Generating live market insights...
+            </span>
+          ) : opportunity.includes("I currently do not have access") ? (
+            <span>
+              Found{" "}
+              <strong style={{ color: "var(--accent-amber)" }}>
+                8 high-potential opportunities
+              </strong>{" "}
+              based on price-fundamental divergence and momentum signals.
+              <strong> NVDA</strong> leads with exceptional AI-driven growth.
+              <strong> GOOGL</strong> offers the best value with 30% upside
+              potential.
+              <strong> 3 stocks</strong> show high-conviction buy signals.
+            </span>
+          ) : (
+            opportunity
+          )}
         </p>
       </div>
 
@@ -547,62 +644,107 @@ export function SectionOpportunities({ onOpenModal, onAskAI }) {
 
 // ── Risk Engine ───────────────────────────────────────────────
 
-function RiskChart() {
-  const ref = useRef(null);
+export function RiskChart() {
+  const canvasRef = useRef(null);
+
   useEffect(() => {
-    const H = window.Highcharts;
-    if (!H || !ref.current) return;
-    const chart = H.chart(ref.current, {
-      chart: {
-        type: "pie",
-        backgroundColor: "transparent",
-        style: { fontFamily: "Inter, sans-serif" },
-      },
-      title: { text: null },
-      credits: { enabled: false },
-      legend: {
-        itemStyle: { color: "#94a3b8" },
-        itemHoverStyle: { color: "#f8fafc" },
-        layout: "vertical",
-        align: "right",
-        verticalAlign: "middle",
-      },
-      tooltip: {
-        backgroundColor: "#1a2332",
-        borderColor: "rgba(255,255,255,0.08)",
-        style: { color: "#f8fafc" },
-      },
-      plotOptions: {
-        pie: {
-          innerSize: "60%",
-          dataLabels: { enabled: false },
-          showInLegend: true,
-          borderWidth: 0,
-        },
-      },
-      series: [
-        {
-          name: "Risk",
-          data: [
-            { name: "Market Risk", y: 35, color: "#ef4444" },
-            { name: "Concentration", y: 25, color: "#f59e0b" },
-            { name: "Volatility", y: 20, color: "#8b5cf6" },
-            { name: "Liquidity", y: 12, color: "#3b82f6" },
-            { name: "Credit", y: 8, color: "#10b981" },
+    const ctx = canvasRef.current;
+    let myRiskChart = null;
+
+    if (ctx) {
+      myRiskChart = new Chart(ctx, {
+        type: "doughnut", // Replaces Highcharts pie + innerSize
+        data: {
+          labels: [
+            "Market Risk",
+            "Concentration",
+            "Volatility",
+            "Liquidity",
+            "Credit",
+          ],
+          datasets: [
+            {
+              label: "Risk Breakdown",
+              data: [35, 25, 20, 12, 8],
+              backgroundColor: [
+                "#ef4444",
+                "#f59e0b",
+                "#8b5cf6",
+                "#3b82f6",
+                "#10b981",
+              ],
+              borderWidth: 0,
+            },
           ],
         },
-      ],
-    });
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: "60%", // Replaces Highcharts innerSize: "60%"
+          plugins: {
+            legend: {
+              display: true,
+              position: "right", // Vertical right alignment
+              labels: {
+                color: "#94a3b8",
+                boxWidth: 12,
+                padding: 15,
+                font: { family: "Inter, sans-serif" },
+              },
+            },
+            tooltip: {
+              backgroundColor: "#1a2332",
+              borderColor: "rgba(255,255,255,0.08)",
+              borderWidth: 1,
+              titleColor: "#f8fafc",
+              bodyColor: "#f8fafc",
+              callbacks: {
+                label: (context) => ` ${context.label}: ${context.raw}%`,
+              },
+            },
+          },
+        },
+      });
+    }
+
+    // Clean up chart instance cleanly on unmount to avoid canvas collision
     return () => {
-      try {
-        chart.destroy();
-      } catch {}
+      if (myRiskChart) {
+        myRiskChart.destroy();
+      }
     };
   }, []);
-  return <div ref={ref} style={{ height: "100%" }} />;
+
+  return (
+    <div style={{ height: "100%", width: "100%" }}>
+      <canvas ref={canvasRef} />
+    </div>
+  );
 }
 
 export function SectionRisk({ onOpenModal, onAskAI }) {
+  const [risk, setRisk] = useState("");
+  const [isLoadingRisk, setIsLoadingRisk] = useState(true);
+
+  useEffect(() => {
+    const getInitialSummary = async () => {
+      try {
+        setIsLoadingRisk(true);
+        // Call the service with your fixed prompt
+        const response = await sendChatMessage(
+          "What are the main risks in my portfolio?",
+        );
+        setRisk(response);
+      } catch (error) {
+        console.error("Error fetching market summary:", error);
+        setRisk("Unable to load the market summary at this time.");
+      } finally {
+        setIsLoadingRisk(false);
+      }
+    };
+
+    getInitialSummary();
+  }, []);
   return (
     <section id="risk" className="section active">
       <div className="header">
@@ -647,14 +789,25 @@ export function SectionRisk({ onOpenModal, onAskAI }) {
             color: "var(--text-secondary)",
           }}
         >
-          Overall portfolio risk is{" "}
-          <strong style={{ color: "var(--accent-amber)" }}>MODERATE</strong>.{" "}
-          <strong style={{ color: "var(--accent-rose)" }}>
-            Tech concentration (42%)
-          </strong>{" "}
-          is elevated vs benchmark. <strong>TSLA</strong> showing
-          price-fundamental divergence. VIX is low suggesting complacency —
-          consider hedging.
+          {isLoadingRisk ? (
+            <span style={{ opacity: 0.6, fontStyle: "italic" }}>
+              Generating live market insights...
+            </span>
+          ) : risk.includes("I currently do not have access") ? (
+            <span>
+              Overall portfolio risk is{" "}
+              <strong style={{ color: "var(--accent-amber)" }}>MODERATE</strong>
+              .{" "}
+              <strong style={{ color: "var(--accent-rose)" }}>
+                Tech concentration (42%)
+              </strong>{" "}
+              is elevated vs benchmark. <strong>TSLA</strong> showing
+              price-fundamental divergence. VIX is low suggesting complacency —
+              consider hedging.
+            </span>
+          ) : (
+            risk
+          )}
         </p>
       </div>
 
@@ -1016,79 +1169,81 @@ export function SectionRisk({ onOpenModal, onAskAI }) {
 
 // ── Stocks Section ────────────────────────────────────────────
 
-function MarketChart() {
-  const ref = useRef(null);
+export function MarketChart() {
+  const canvasRef = useRef(null);
+
   useEffect(() => {
-    const H = window.Highcharts;
-    if (!H || !ref.current) return;
-    const chart = H.chart(ref.current, {
-      chart: {
-        type: "area",
-        backgroundColor: "transparent",
-        style: { fontFamily: "Inter, sans-serif" },
-      },
-      title: { text: null },
-      credits: { enabled: false },
-      legend: { enabled: false },
-      xAxis: {
-        categories: [
-          "9:30",
-          "10:00",
-          "10:30",
-          "11:00",
-          "11:30",
-          "12:00",
-          "12:30",
-          "1:00",
-          "1:30",
-          "2:00",
-          "2:30",
-          "3:00",
-          "3:30",
-          "4:00",
-        ],
-        labels: { style: { color: "#94a3b8" } },
-        gridLineColor: "rgba(148,163,184,0.1)",
-        lineColor: "rgba(148,163,184,0.1)",
-        tickInterval: 2,
-      },
-      yAxis: {
-        title: { text: null },
-        labels: { style: { color: "#94a3b8" } },
-        gridLineColor: "rgba(148,163,184,0.1)",
-      },
-      tooltip: {
-        backgroundColor: "#1a2332",
-        borderColor: "rgba(255,255,255,0.08)",
-        style: { color: "#f8fafc" },
-      },
-      series: [
-        {
-          name: "S&P 500",
-          data: [
-            5200, 5215, 5220, 5210, 5230, 5245, 5238, 5250, 5245, 5260, 5255,
-            5270, 5265, 5278,
+    const ctx = canvasRef.current;
+    let myMarketChart = null;
+
+    if (ctx) {
+      myMarketChart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: [
+            "9:30",
+            "10:00",
+            "10:30",
+            "11:00",
+            "11:30",
+            "12:00",
+            "12:30",
+            "1:00",
+            "1:30",
+            "2:00",
+            "2:30",
+            "3:00",
+            "3:30",
+            "4:00",
           ],
-          color: "#10b981",
-          fillColor: {
-            linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
-            stops: [
-              [0, "rgba(16,185,129,0.2)"],
-              [1, "rgba(16,185,129,0)"],
-            ],
-          },
-          lineWidth: 2,
-          marker: { enabled: false },
+          datasets: [
+            {
+              label: "S&P 500",
+              data: [
+                5200, 5215, 5220, 5210, 5230, 5245, 5238, 5250, 5245, 5260,
+                5255, 5270, 5265, 5278,
+              ],
+              borderColor: "#10b981",
+              backgroundColor: "rgba(16, 185, 129, 0.1)",
+              fill: true,
+              tension: 0.4,
+              pointRadius: 0,
+            },
+          ],
         },
-      ],
-    });
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+          },
+          scales: {
+            x: {
+              grid: { color: "rgba(148, 163, 184, 0.1)" },
+              ticks: { color: "#94a3b8", maxTicksLimit: 7 },
+            },
+            y: {
+              grid: { color: "rgba(148, 163, 184, 0.1)" },
+              ticks: { color: "#94a3b8" },
+            },
+          },
+        },
+      });
+    }
+
+    // Clean up chart instance to prevent canvas collision errors on hot-reload or unmount
     return () => {
-      try {
-        chart.destroy();
-      } catch {}
+      if (myMarketChart) {
+        myMarketChart.destroy();
+      }
     };
   }, []);
-  return <div ref={ref} style={{ height: "100%" }} />;
+
+  return (
+    <div style={{ height: "100%", width: "100%" }}>
+      <canvas ref={canvasRef} />
+    </div>
+  );
 }
 
 export function SectionStocks({ onOpenModal, activeList }) {

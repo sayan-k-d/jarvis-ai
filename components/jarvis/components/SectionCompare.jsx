@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { stocksData, stockScores } from "../data/staticData.js";
 import {
   getPemClass,
@@ -8,6 +8,7 @@ import {
   generateVerdict,
   generateInsights,
 } from "../utils/helpers.js";
+import { sendChatMessage } from "../services/aiServices.js";
 
 const COLORS = ["#06b6d4", "#8b5cf6", "#f59e0b"];
 const METRICS = [
@@ -310,6 +311,8 @@ export default function SectionCompare({
     setSel1("");
     setSel2("");
     setSel3("");
+    setComparisonResult("");
+    setIsLoadingComparison(false);
   };
 
   const mkOptions = (placeholder) => (
@@ -322,6 +325,44 @@ export default function SectionCompare({
       ))}
     </>
   );
+
+  const [comparisonResult, setComparisonResult] = useState("");
+  const [isLoadingComparison, setIsLoadingComparison] = useState(false);
+
+  useEffect(() => {
+    // 1. Filter out empty selections or placeholders
+    const selectedStocks = [sel1, sel2, sel3].filter(
+      (stock) => stock && stock.trim() !== "" && !stock.includes("Select"),
+    );
+
+    // 2. Trigger API call ONLY when 2 or 3 valid stocks are chosen
+    if (selectedStocks.length < 2) return;
+    const fetchComparison = async () => {
+      try {
+        setIsLoadingComparison(true);
+        setComparisonResult(""); // Clear old result while loading
+
+        // 3. Construct dynamic prompt format
+        let prompt = `Compare ${selectedStocks.length === 2 ? "two" : "three"} stocks with full details ${selectedStocks[0]} vs ${selectedStocks[1]}`;
+        if (selectedStocks[2]) {
+          prompt += ` vs ${selectedStocks[2]}`;
+        }
+
+        // 4. Fire the API call
+        const response = await sendChatMessage(prompt);
+        setComparisonResult(response);
+      } catch (error) {
+        console.error("Error fetching comparison:", error);
+        setComparisonResult(
+          "Unable to generate stock comparison at this time.",
+        );
+      } finally {
+        setIsLoadingComparison(false);
+      }
+    };
+
+    fetchComparison();
+  }, [sel1, sel2, sel3]);
 
   return (
     <section id="compare" className="section active">
@@ -446,16 +487,43 @@ export default function SectionCompare({
               <div className="ai-badge">
                 <i className="fas fa-brain"></i> Jarvis AI
               </div>
-              <p
-                dangerouslySetInnerHTML={{
-                  __html: generateVerdict(
-                    stocks,
-                    winnerStock,
-                    scores,
-                    stockScores,
-                  ),
-                }}
-              />
+              {/* Loading and Results Container */}
+              {(isLoadingComparison || comparisonResult) &&
+                (isLoadingComparison ? (
+                  <div style={{ opacity: 0.6, fontStyle: "italic" }}>
+                    <i
+                      className="fas fa-spinner fa-spin"
+                      style={{ marginRight: 8 }}
+                    ></i>
+                    Analyzing...
+                  </div>
+                ) : (
+                  <p
+                    style={{
+                      fontSize: "0.95em",
+                      lineHeight: 1.7,
+                      color: "var(--text-secondary)",
+                      whiteSpace: "pre-line",
+                    }}
+                  >
+                    {comparisonResult.includes(
+                      "I currently do not have access",
+                    ) ? (
+                      <p
+                        dangerouslySetInnerHTML={{
+                          __html: generateVerdict(
+                            stocks,
+                            winnerStock,
+                            scores,
+                            stockScores,
+                          ),
+                        }}
+                      />
+                    ) : (
+                      comparisonResult
+                    )}
+                  </p>
+                ))}
             </div>
           </div>
 

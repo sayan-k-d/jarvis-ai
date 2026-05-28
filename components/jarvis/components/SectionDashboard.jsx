@@ -6,143 +6,157 @@ import {
   getChangeSign,
   formatCurrency,
 } from "../utils/helpers.js";
+import { Chart, registerables } from "chart.js";
 
-function PortfolioChart() {
-  const ref = useRef(null);
+Chart.register(...registerables);
+
+export function PortfolioChart() {
+  const canvasRef = useRef(null);
+
   useEffect(() => {
-    const H = window.Highcharts;
-    if (!H || !ref.current) return;
-    const chart = H.chart(ref.current, {
-      chart: {
-        type: "area",
-        backgroundColor: "transparent",
-        style: { fontFamily: "Inter, sans-serif" },
-      },
-      title: { text: null },
-      credits: { enabled: false },
-      legend: {
-        itemStyle: { color: "#94a3b8" },
-        itemHoverStyle: { color: "#f8fafc" },
-      },
-      xAxis: {
-        categories: ["9AM", "10AM", "11AM", "12PM", "1PM", "2PM", "3PM", "4PM"],
-        labels: { style: { color: "#94a3b8" } },
-        gridLineColor: "rgba(148,163,184,0.1)",
-        lineColor: "rgba(148,163,184,0.1)",
-        tickColor: "rgba(148,163,184,0.1)",
-      },
-      yAxis: {
-        title: { text: null },
-        labels: {
-          style: { color: "#94a3b8" },
-          formatter: function () {
-            return "$" + (this.value / 1000000).toFixed(2) + "M";
+    const ctx = canvasRef.current;
+    let myPortfolioChart = null;
+
+    if (ctx) {
+      myPortfolioChart = new Chart(ctx, {
+        type: "line",
+        data: {
+          labels: ["9AM", "10AM", "11AM", "12PM", "1PM", "2PM", "3PM", "4PM"],
+          datasets: [
+            {
+              label: "Portfolio",
+              data: [
+                2450000, 2458000, 2462000, 2455000, 2465000, 2468000, 2472000,
+                2473450,
+              ],
+              borderColor: "#06b6d4",
+              backgroundColor: "rgba(6, 182, 212, 0.1)",
+              fill: true,
+              tension: 0.4,
+              pointRadius: 0,
+              pointHoverRadius: 6,
+            },
+            {
+              label: "S&P 500",
+              data: [
+                2450000, 2452000, 2455000, 2450000, 2458000, 2460000, 2463000,
+                2461000,
+              ],
+              borderColor: "#64748b",
+              borderDash: [5, 5],
+              fill: false,
+              tension: 0.4,
+              pointRadius: 0,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: true,
+              position: "top",
+              labels: { color: "#94a3b8", boxWidth: 12, padding: 20 },
+            },
+          },
+          scales: {
+            x: {
+              grid: { color: "rgba(148, 163, 184, 0.1)" },
+              ticks: { color: "#94a3b8" },
+            },
+            y: {
+              grid: { color: "rgba(148, 163, 184, 0.1)" },
+              ticks: {
+                color: "#94a3b8",
+                callback: (v) => "$" + (v / 1000000).toFixed(2) + "M",
+              },
+            },
           },
         },
-        gridLineColor: "rgba(148,163,184,0.1)",
-      },
-      tooltip: {
-        backgroundColor: "#1a2332",
-        borderColor: "rgba(255,255,255,0.08)",
-        style: { color: "#f8fafc" },
-        formatter: function () {
-          return `<b>${this.series.name}</b><br/>$${(this.y / 1000000).toFixed(3)}M`;
-        },
-      },
-      series: [
-        {
-          name: "Portfolio",
-          data: [
-            2450000, 2458000, 2462000, 2455000, 2465000, 2468000, 2472000,
-            2473450,
-          ],
-          color: "#06b6d4",
-          fillColor: {
-            linearGradient: { x1: 0, y1: 0, x2: 0, y2: 1 },
-            stops: [
-              [0, "rgba(6,182,212,0.2)"],
-              [1, "rgba(6,182,212,0)"],
-            ],
-          },
-          lineWidth: 2,
-          marker: { enabled: false, states: { hover: { enabled: true } } },
-        },
-        {
-          name: "S&P 500",
-          data: [
-            2450000, 2452000, 2455000, 2450000, 2458000, 2460000, 2463000,
-            2461000,
-          ],
-          color: "#64748b",
-          dashStyle: "Dash",
-          fillColor: "transparent",
-          lineWidth: 1.5,
-          marker: { enabled: false },
-        },
-      ],
-    });
+      });
+    }
+
+    // Clean up chart instance when component unmounts
     return () => {
-      try {
-        chart.destroy();
-      } catch {}
+      if (myPortfolioChart) {
+        myPortfolioChart.destroy();
+      }
     };
   }, []);
-  return <div ref={ref} style={{ height: "100%" }} />;
+
+  return (
+    <div style={{ height: "100%", width: "100%" }}>
+      <canvas ref={canvasRef} />
+    </div>
+  );
 }
 
-function AllocationChart() {
-  const ref = useRef(null);
+export function AllocationChart() {
+  const canvasRef = useRef(null);
+
   useEffect(() => {
-    const H = window.Highcharts;
-    if (!H || !ref.current) return;
-    const chart = H.chart(ref.current, {
-      chart: {
-        type: "pie",
-        backgroundColor: "transparent",
-        style: { fontFamily: "Inter, sans-serif" },
-      },
-      title: { text: null },
-      credits: { enabled: false },
-      legend: {
-        itemStyle: { color: "#94a3b8" },
-        itemHoverStyle: { color: "#f8fafc" },
-        layout: "vertical",
-        align: "right",
-        verticalAlign: "middle",
-      },
-      tooltip: {
-        backgroundColor: "#1a2332",
-        borderColor: "rgba(255,255,255,0.08)",
-        style: { color: "#f8fafc" },
-      },
-      plotOptions: {
-        pie: {
-          innerSize: "65%",
-          dataLabels: { enabled: false },
-          showInLegend: true,
-          borderWidth: 0,
-        },
-      },
-      series: [
-        {
-          name: "Allocation",
-          data: [
-            { name: "Technology", y: 42, color: "#06b6d4" },
-            { name: "Healthcare", y: 18, color: "#10b981" },
-            { name: "Financials", y: 22, color: "#3b82f6" },
-            { name: "Consumer", y: 12, color: "#f59e0b" },
-            { name: "Other", y: 6, color: "#64748b" },
+    const ctx = canvasRef.current;
+    let myAllocationChart = null;
+
+    if (ctx) {
+      myAllocationChart = new Chart(ctx, {
+        type: "doughnut", // Replaces Highcharts pie with an inner cutout
+        data: {
+          labels: [
+            "Technology",
+            "Healthcare",
+            "Financials",
+            "Consumer",
+            "Other",
+          ],
+          datasets: [
+            {
+              label: "Allocation",
+              data: [42, 18, 22, 12, 6],
+              backgroundColor: [
+                "#06b6d4",
+                "#10b981",
+                "#3b82f6",
+                "#f59e0b",
+                "#64748b",
+              ],
+              borderWidth: 0,
+            },
           ],
         },
-      ],
-    });
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: "65%", // Gives it the exact donut ring appearance
+          plugins: {
+            legend: {
+              display: true,
+              position: "right",
+              labels: {
+                color: "#94a3b8",
+                boxWidth: 12,
+                padding: 15,
+                font: { family: "Inter, sans-serif" },
+              },
+            },
+          },
+        },
+      });
+    }
+
     return () => {
-      try {
-        chart.destroy();
-      } catch {}
+      if (myAllocationChart) {
+        myAllocationChart.destroy();
+      }
     };
   }, []);
-  return <div ref={ref} style={{ height: "100%" }} />;
+
+  return (
+    <div style={{ height: "100%", width: "100%" }}>
+      <canvas ref={canvasRef} />
+    </div>
+  );
 }
 
 export default function SectionDashboard({ onOpenModal }) {

@@ -1,122 +1,174 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { marketData } from "../data/staticData.js";
+import { sendChatMessage } from "../services/aiServices.js";
+import { Chart, registerables } from "chart.js";
 
-function MarketIndexChart() {
-  const ref = useRef(null);
+// Register necessary Chart.js elements, scales, and plugins
+Chart.register(...registerables);
+
+export function MarketIndexChart() {
+  const canvasRef = useRef(null);
+
   useEffect(() => {
-    const H = window.Highcharts;
-    if (!H || !ref.current) return;
-    const chart = H.chart(ref.current, {
-      chart: {
+    const ctx = canvasRef.current;
+    let myMarketIndexChart = null;
+
+    if (ctx) {
+      myMarketIndexChart = new Chart(ctx, {
         type: "line",
-        backgroundColor: "transparent",
-        style: { fontFamily: "Inter, sans-serif" },
-      },
-      title: { text: null },
-      credits: { enabled: false },
-      legend: {
-        itemStyle: { color: "#94a3b8" },
-        itemHoverStyle: { color: "#f8fafc" },
-      },
-      xAxis: {
-        categories: ["Mon", "Tue", "Wed", "Thu", "Fri"],
-        labels: { style: { color: "#94a3b8" } },
-        gridLineColor: "rgba(148,163,184,0.1)",
-        lineColor: "rgba(148,163,184,0.1)",
-      },
-      yAxis: {
-        title: { text: null },
-        labels: { style: { color: "#94a3b8" } },
-        gridLineColor: "rgba(148,163,184,0.1)",
-      },
-      tooltip: {
-        backgroundColor: "#1a2332",
-        borderColor: "rgba(255,255,255,0.08)",
-        style: { color: "#f8fafc" },
-      },
-      series: [
-        {
-          name: "S&P 500",
-          data: [5200, 5235, 5248, 5260, 5278],
-          color: "#10b981",
-          lineWidth: 2,
-          marker: { enabled: false },
+        data: {
+          labels: ["Mon", "Tue", "Wed", "Thu", "Fri"],
+          datasets: [
+            {
+              label: "S&P 500",
+              data: [5200, 5235, 5248, 5260, 5278],
+              borderColor: "#10b981",
+              backgroundColor: "transparent",
+              borderWidth: 2,
+              pointRadius: 0,
+              fill: false,
+            },
+            {
+              label: "NASDAQ",
+              data: [16200, 16350, 16400, 16420, 16485],
+              borderColor: "#3b82f6",
+              backgroundColor: "transparent",
+              borderWidth: 2,
+              pointRadius: 0,
+              fill: false,
+            },
+            {
+              label: "DOW",
+              data: [38450, 38600, 38700, 38800, 38892],
+              borderColor: "#f59e0b",
+              backgroundColor: "transparent",
+              borderWidth: 2,
+              pointRadius: 0,
+              fill: false,
+            },
+          ],
         },
-        {
-          name: "NASDAQ",
-          data: [16200, 16350, 16400, 16420, 16485],
-          color: "#3b82f6",
-          lineWidth: 2,
-          marker: { enabled: false },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              display: true,
+              position: "top",
+              labels: {
+                color: "#94a3b8",
+                boxWidth: 12,
+                padding: 20,
+                font: { family: "Inter, sans-serif" },
+              },
+            },
+          },
+          scales: {
+            x: {
+              grid: { color: "rgba(148, 163, 184, 0.1)" },
+              ticks: { color: "#94a3b8" },
+            },
+            y: {
+              grid: { color: "rgba(148, 163, 184, 0.1)" },
+              ticks: { color: "#94a3b8" },
+            },
+          },
         },
-        {
-          name: "DOW",
-          data: [38450, 38600, 38700, 38800, 38892],
-          color: "#f59e0b",
-          lineWidth: 2,
-          marker: { enabled: false },
-        },
-      ],
-    });
+      });
+    }
+
+    // Explicit cleanup to destroy chart instance on component unmount
     return () => {
-      try {
-        chart.destroy();
-      } catch {}
+      if (myMarketIndexChart) {
+        myMarketIndexChart.destroy();
+      }
     };
   }, []);
-  return <div ref={ref} style={{ height: "100%" }} />;
+
+  return (
+    <div style={{ height: "100%", width: "100%" }}>
+      <canvas ref={canvasRef} />
+    </div>
+  );
 }
 
-function SectorChart() {
-  const ref = useRef(null);
+export function SectorChart({ marketData }) {
+  const canvasRef = useRef(null);
+
   useEffect(() => {
-    const H = window.Highcharts;
-    if (!H || !ref.current) return;
-    const chart = H.chart(ref.current, {
-      chart: {
+    const ctx = canvasRef.current;
+    let mySectorChart = null;
+
+    if (ctx && marketData?.sectors) {
+      mySectorChart = new Chart(ctx, {
         type: "bar",
-        backgroundColor: "transparent",
-        style: { fontFamily: "Inter, sans-serif" },
-      },
-      title: { text: null },
-      credits: { enabled: false },
-      legend: { enabled: false },
-      xAxis: {
-        categories: marketData.sectors.map((s) => s.name),
-        labels: { style: { color: "#94a3b8" } },
-        gridLineColor: "rgba(148,163,184,0.1)",
-        lineColor: "rgba(148,163,184,0.1)",
-      },
-      yAxis: {
-        title: { text: null },
-        labels: { style: { color: "#94a3b8" }, format: "{value}%" },
-        gridLineColor: "rgba(148,163,184,0.1)",
-      },
-      tooltip: {
-        backgroundColor: "#1a2332",
-        borderColor: "rgba(255,255,255,0.08)",
-        style: { color: "#f8fafc" },
-        valueSuffix: "%",
-      },
-      series: [
-        {
-          data: marketData.sectors.map((s) => ({
-            y: s.change,
-            color: s.change >= 0 ? "#10b981" : "#ef4444",
-          })),
+        data: {
+          labels: marketData.sectors.map((s) => s.name),
+          datasets: [
+            {
+              data: marketData.sectors.map((s) => s.change),
+              backgroundColor: marketData.sectors.map((s) =>
+                s.change >= 0 ? "#10b981" : "#ef4444",
+              ),
+            },
+          ],
         },
-      ],
-    });
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          indexAxis: "y",
+          plugins: { legend: { display: false } },
+          scales: {
+            x: {
+              grid: { color: "rgba(148, 163, 184, 0.1)" },
+              ticks: { color: "#94a3b8", callback: (v) => v + "%" },
+            },
+            y: {
+              grid: { display: false },
+              ticks: { color: "#94a3b8" },
+            },
+          },
+        },
+      });
+    }
+
+    // Clean up chart instance automatically on component unmount or data refresh
     return () => {
-      try {
-        chart.destroy();
-      } catch {}
+      if (mySectorChart) {
+        mySectorChart.destroy();
+      }
     };
-  }, []);
-  return <div ref={ref} style={{ height: "100%" }} />;
+  }, [marketData]); // Re-renders cleanly if marketData shifts underneath
+
+  return (
+    <div style={{ height: "100%", width: "100%" }}>
+      <canvas ref={canvasRef} />
+    </div>
+  );
 }
 
 export default function SectionMarket({ onOpenModal, onAskAI }) {
+  const [marketSummary, setMarketSummary] = useState("");
+  const [isLoadingSummary, setIsLoadingSummary] = useState(true);
+
+  useEffect(() => {
+    const getInitialSummary = async () => {
+      try {
+        setIsLoadingSummary(true);
+        // Call the service with your fixed prompt
+        const response = await sendChatMessage("Give me a market summary");
+        setMarketSummary(response);
+      } catch (error) {
+        console.error("Error fetching market summary:", error);
+        setMarketSummary("Unable to load the market summary at this time.");
+      } finally {
+        setIsLoadingSummary(false);
+      }
+    };
+
+    getInitialSummary();
+  }, []);
+
   return (
     <section id="market" className="section active">
       <div className="header">
@@ -169,22 +221,32 @@ export default function SectionMarket({ onOpenModal, onAskAI }) {
                 color: "var(--text-secondary)",
               }}
             >
-              This week saw a{" "}
-              <strong style={{ color: "var(--accent-emerald)" }}>
-                broad market rally
-              </strong>{" "}
-              driven by stronger-than-expected earnings from mega-cap tech. The
-              S&amp;P 500 gained <strong>1.8%</strong> while the Nasdaq surged{" "}
-              <strong>2.4%</strong>.{" "}
-              <strong style={{ color: "var(--accent-rose)" }}>
-                Energy (-1.2%)
-              </strong>{" "}
-              and{" "}
-              <strong style={{ color: "var(--accent-rose)" }}>
-                Utilities (-0.8%)
-              </strong>{" "}
-              {`lagged. The Fed's dovish tone boosted sentiment, with rate-cut
+              {isLoadingSummary ? (
+                <span style={{ opacity: 0.6, fontStyle: "italic" }}>
+                  Generating live market insights...
+                </span>
+              ) : marketSummary.includes("I currently do not have access") ? (
+                <span>
+                  This week saw a{" "}
+                  <strong style={{ color: "var(--accent-emerald)" }}>
+                    broad market rally
+                  </strong>{" "}
+                  driven by stronger-than-expected earnings from mega-cap tech.
+                  The S&amp;P 500 gained <strong>1.8%</strong> while the Nasdaq
+                  surged <strong>2.4%</strong>.{" "}
+                  <strong style={{ color: "var(--accent-rose)" }}>
+                    Energy (-1.2%)
+                  </strong>{" "}
+                  and{" "}
+                  <strong style={{ color: "var(--accent-rose)" }}>
+                    Utilities (-0.8%)
+                  </strong>{" "}
+                  {`lagged. The Fed's dovish tone boosted sentiment, with rate-cut
               expectations pushing 10-year yields below 4.5%.`}
+                </span>
+              ) : (
+                marketSummary
+              )}
             </p>
           </div>
           <div style={{ textAlign: "right", marginLeft: 24 }}>
@@ -328,7 +390,7 @@ export default function SectionMarket({ onOpenModal, onAskAI }) {
             <h3>Sector Performance</h3>
           </div>
           <div className="chart-container">
-            <SectorChart />
+            <SectorChart marketData={marketData} />
           </div>
         </div>
       </div>

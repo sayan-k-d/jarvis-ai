@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { aiResponses } from "../data/staticData.js";
 import { getDynamicAiResponse } from "../utils/helpers.js";
+import { sendChatMessage } from "../services/aiServices.js";
 
 export default function AIPanel({
   isOpen,
@@ -46,22 +47,55 @@ export default function AIPanel({
       messagesRef.current.scrollTop = messagesRef.current.scrollHeight;
   };
 
+  // const ask = useCallback(
+  //   (question) => {
+  //     if (!isOpen) onToggle();
+  //     setMessages((prev) => [...prev, { type: "user", content: question }]);
+  //     setIsTyping(true);
+  //     setTimeout(() => {
+  //       const response =
+  //         aiResponses[question] ||
+  //         getDynamicAiResponse(question, stocksData || []);
+  //       setIsTyping(false);
+  //       setMessages((prev) => [...prev, { type: "bot", content: response }]);
+  //     }, 1200);
+  //   },
+  //   [isOpen, onToggle, stocksData],
+  // );
   const ask = useCallback(
-    (question) => {
+    async (question) => {
+      // 1. UI updates: Open chat window if closed
       if (!isOpen) onToggle();
+
+      // 2. Optimistically add user message and trigger loader
       setMessages((prev) => [...prev, { type: "user", content: question }]);
       setIsTyping(true);
-      setTimeout(() => {
-        const response =
-          aiResponses[question] ||
-          getDynamicAiResponse(question, stocksData || []);
-        setIsTyping(false);
-        setMessages((prev) => [...prev, { type: "bot", content: response }]);
-      }, 1200);
-    },
-    [isOpen, onToggle, stocksData],
-  );
 
+      try {
+        // 3. Call the external service
+        const botResponse = await sendChatMessage(question);
+
+        // 4. Update state with successful backend response
+        setMessages((prev) => [...prev, { type: "bot", content: botResponse }]);
+      } catch (error) {
+        // 5. Handle fallback messaging in case of failure
+        console.log(error);
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            type: "bot",
+            content:
+              "Sorry, I'm having trouble connecting to the server right now.",
+          },
+        ]);
+      } finally {
+        // 6. Ensure typing loader turns off regardless of success or failure
+        setIsTyping(false);
+      }
+    },
+    [isOpen, onToggle], // Removed 'stocksData' since the backend now manages the data fetching
+  );
   useEffect(() => {
     const askAi = async () => {
       ask(externalQuestion);
