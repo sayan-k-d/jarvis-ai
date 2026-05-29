@@ -1,5 +1,5 @@
 // chatService.js
-const API_BASE_URL = "http://168.231.102.73:7000";
+const API_BASE_URL = "https://e991-2a02-4780-12-a2af-00-1.ngrok-free.app";
 
 /**
  * Sends a user message to the chat API and returns the bot's text response.
