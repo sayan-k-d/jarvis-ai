@@ -117,27 +117,47 @@ export function BenchmarkChart() {
 
 export function SectionPortfolioIntel({ onAskAI }) {
   const [portfolioIntel, setportfolioIntel] = useState("");
-  const [isLoadingIntel, setIsLoadingIntel] = useState(true);
+  const [isLoadingIntel, setIsLoadingIntel] = useState(false);
 
-  useEffect(() => {
-    const getInitialSummary = async () => {
-      try {
-        setIsLoadingIntel(true);
-        // Call the service with your fixed prompt
-        const response = await sendChatMessage(
-          "Analyze my portfolio performance",
-        );
-        setportfolioIntel(response);
-      } catch (error) {
-        console.error("Error fetching market summary:", error);
-        setportfolioIntel("Unable to load the market summary at this time.");
-      } finally {
-        setIsLoadingIntel(false);
+  const CACHE_KEY = "initial_summary";
+
+  const fetchInitialSummury = async (forceRefresh = false) => {
+    // 1. If not a forced refresh, look for data inside the cache first
+    if (!forceRefresh) {
+      const cachedData = sessionStorage.getItem(CACHE_KEY);
+      if (cachedData) {
+        setportfolioIntel(cachedData);
+        return; // Exit early, no API call needed!
       }
-    };
+    }
 
-    getInitialSummary();
+    // 2. Fetch fresh data if cache missed or if user clicked Refresh
+    try {
+      setIsLoadingIntel(true);
+
+      const response = await sendChatMessage(
+        "Analyze my portfolio performance",
+      );
+
+      // Update local state and save to cache
+      setportfolioIntel(response);
+      sessionStorage.setItem(CACHE_KEY, response);
+    } catch (error) {
+      console.error("Error fetching market summary:", error);
+      // Fallback message if there's no pre-existing text to show
+      if (!marketSummary) {
+        setportfolioIntel("Unable to load the market summary at this time.");
+      }
+    } finally {
+      setIsLoadingIntel(false);
+    }
+  };
+
+  // Run automatically on page load / component mount
+  useEffect(() => {
+    fetchInitialSummury(false);
   }, []);
+
   return (
     <section id="portfolio-intel" className="section active">
       <div className="header">
@@ -400,27 +420,47 @@ export function SectionPortfolioIntel({ onAskAI }) {
 
 export function SectionOpportunities({ onOpenModal, onAskAI }) {
   const [opportunity, setOpportunities] = useState("");
-  const [isLoadingOpportunities, setIsLoadingOpportunities] = useState(true);
+  const [isLoadingOpportunities, setIsLoadingOpportunities] = useState(false);
 
-  useEffect(() => {
-    const getInitialSummary = async () => {
-      try {
-        setIsLoadingOpportunities(true);
-        // Call the service with your fixed prompt
-        const response = await sendChatMessage(
-          "Which Sectors are stocks are best right now , Which sectors or stocks should i look for investements ? Give reasons why should we choose that stock",
-        );
-        setOpportunities(response);
-      } catch (error) {
-        console.error("Error fetching market summary:", error);
-        setOpportunities("Unable to load the market summary at this time.");
-      } finally {
-        setIsLoadingOpportunities(false);
+  const CACHE_KEY = "opportunity_summary";
+
+  const fetchOpportunity = async (forceRefresh = false) => {
+    // 1. If not a forced refresh, look for data inside the cache first
+    if (!forceRefresh) {
+      const cachedData = sessionStorage.getItem(CACHE_KEY);
+      if (cachedData) {
+        setOpportunities(cachedData);
+        return; // Exit early, no API call needed!
       }
-    };
+    }
 
-    getInitialSummary();
+    // 2. Fetch fresh data if cache missed or if user clicked Refresh
+    try {
+      setIsLoadingOpportunities(true);
+
+      const response = await sendChatMessage(
+        "Which Sectors are stocks are best right now , Which sectors or stocks should i look for investements ? Give reasons why should we choose that stock",
+      );
+
+      // Update local state and save to cache
+      setOpportunities(response);
+      sessionStorage.setItem(CACHE_KEY, response);
+    } catch (error) {
+      console.error("Error fetching market summary:", error);
+      // Fallback message if there's no pre-existing text to show
+      if (!marketSummary) {
+        setOpportunities("Unable to load the market summary at this time.");
+      }
+    } finally {
+      setIsLoadingOpportunities(false);
+    }
+  };
+
+  // Run automatically on page load / component mount
+  useEffect(() => {
+    fetchOpportunity(false);
   }, []);
+
   return (
     <section id="opportunities" className="section active">
       <div className="header">
@@ -441,7 +481,9 @@ export function SectionOpportunities({ onOpenModal, onAskAI }) {
           <button
             className="btn btn-primary"
             onClick={() =>
-              onAskAI("What are the best opportunities right now?")
+              onAskAI(
+                "Which Sectors are stocks are best right now , Which sectors or stocks should i look for investements ? Give reasons why should we choose that stock",
+              )
             }
           >
             <i className="fas fa-robot"></i> Ask AI
@@ -724,27 +766,46 @@ export function RiskChart() {
 
 export function SectionRisk({ onOpenModal, onAskAI }) {
   const [risk, setRisk] = useState("");
-  const [isLoadingRisk, setIsLoadingRisk] = useState(true);
+  const [isLoadingRisk, setIsLoadingRisk] = useState(false);
+  const CACHE_KEY = "risk_summury";
 
-  useEffect(() => {
-    const getInitialSummary = async () => {
-      try {
-        setIsLoadingRisk(true);
-        // Call the service with your fixed prompt
-        const response = await sendChatMessage(
-          "What are the main risks in my portfolio?",
-        );
-        setRisk(response);
-      } catch (error) {
-        console.error("Error fetching market summary:", error);
-        setRisk("Unable to load the market summary at this time.");
-      } finally {
-        setIsLoadingRisk(false);
+  const fetchRisk = async (forceRefresh = false) => {
+    // 1. If not a forced refresh, look for data inside the cache first
+    if (!forceRefresh) {
+      const cachedData = sessionStorage.getItem(CACHE_KEY);
+      if (cachedData) {
+        setRisk(cachedData);
+        return; // Exit early, no API call needed!
       }
-    };
+    }
 
-    getInitialSummary();
+    // 2. Fetch fresh data if cache missed or if user clicked Refresh
+    try {
+      setIsLoadingRisk(true);
+
+      const response = await sendChatMessage(
+        "What are the main risks in my portfolio?",
+      );
+
+      // Update local state and save to cache
+      setRisk(response);
+      sessionStorage.setItem(CACHE_KEY, response);
+    } catch (error) {
+      console.error("Error fetching market summary:", error);
+      // Fallback message if there's no pre-existing text to show
+      if (!marketSummary) {
+        setRisk("Unable to load the market summary at this time.");
+      }
+    } finally {
+      setIsLoadingRisk(false);
+    }
+  };
+
+  // Run automatically on page load / component mount
+  useEffect(() => {
+    fetchRisk(false);
   }, []);
+
   return (
     <section id="risk" className="section active">
       <div className="header">

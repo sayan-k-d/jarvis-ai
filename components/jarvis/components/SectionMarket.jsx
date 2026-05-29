@@ -149,24 +149,44 @@ export function SectorChart({ marketData }) {
 
 export default function SectionMarket({ onOpenModal, onAskAI }) {
   const [marketSummary, setMarketSummary] = useState("");
-  const [isLoadingSummary, setIsLoadingSummary] = useState(true);
+  const [isLoadingSummary, setIsLoadingSummary] = useState(false);
+  const CACHE_KEY = "world_market_summary";
 
-  useEffect(() => {
-    const getInitialSummary = async () => {
-      try {
-        setIsLoadingSummary(true);
-        // Call the service with your fixed prompt
-        const response = await sendChatMessage("Give me a market summary");
-        setMarketSummary(response);
-      } catch (error) {
-        console.error("Error fetching market summary:", error);
-        setMarketSummary("Unable to load the market summary at this time.");
-      } finally {
-        setIsLoadingSummary(false);
+  const fetchMarketSummary = async (forceRefresh = false) => {
+    // 1. If not a forced refresh, look for data inside the cache first
+    if (!forceRefresh) {
+      const cachedData = sessionStorage.getItem(CACHE_KEY);
+      if (cachedData) {
+        setMarketSummary(cachedData);
+        return; // Exit early, no API call needed!
       }
-    };
+    }
 
-    getInitialSummary();
+    // 2. Fetch fresh data if cache missed or if user clicked Refresh
+    try {
+      setIsLoadingSummary(true);
+
+      const response = await sendChatMessage(
+        "What major events happened last week in World stock market?",
+      );
+
+      // Update local state and save to cache
+      setMarketSummary(response);
+      sessionStorage.setItem(CACHE_KEY, response);
+    } catch (error) {
+      console.error("Error fetching market summary:", error);
+      // Fallback message if there's no pre-existing text to show
+      if (!marketSummary) {
+        setMarketSummary("Unable to load the market summary at this time.");
+      }
+    } finally {
+      setIsLoadingSummary(false);
+    }
+  };
+
+  // Run automatically on page load / component mount
+  useEffect(() => {
+    fetchMarketSummary(false);
   }, []);
 
   return (
@@ -183,12 +203,21 @@ export default function SectionMarket({ onOpenModal, onAskAI }) {
           <p>{`"What changed this week?" — AI-powered market analysis`}</p>
         </div>
         <div className="header-right">
-          <button className="btn btn-secondary">
-            <i className="fas fa-sync-alt"></i> Refresh Data
+          <button
+            className="btn btn-secondary"
+            onClick={() => fetchMarketSummary(true)} // Passes true to bypass cache
+            disabled={isLoadingSummary}
+          >
+            <i className="fas fa-sync-alt"></i>{" "}
+            {isLoadingSummary ? "Refreshing..." : "Refresh Data"}
           </button>
           <button
             className="btn btn-primary"
-            onClick={() => onAskAI("Give me a market summary")}
+            onClick={() =>
+              onAskAI(
+                "What major events happened last week in World stock market?",
+              )
+            }
           >
             <i className="fas fa-robot"></i> Ask AI
           </button>
