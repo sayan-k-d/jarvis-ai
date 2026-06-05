@@ -206,7 +206,7 @@ export const fetchWithInterceptor = async (url, queries = {}, options = {}) => {
       // Direct local development fallback hits the IP directly with normal query strings
       finalUrl = `http://35.226.245.206:9092/JarvisV3/${url}${buildQueryString(queries)}`;
     } else {
-      // FIX: Flatten parameters out for the Vercel proxy handler
+      // Production: Flatten parameters out and point to the absolute jharvis.com proxy domain
       const proxyParams = new URLSearchParams({ api: url });
 
       Object.entries(queries).forEach(([key, value]) => {
@@ -215,7 +215,7 @@ export const fetchWithInterceptor = async (url, queries = {}, options = {}) => {
         }
       });
 
-      finalUrl = `/api/proxy?${proxyParams.toString()}`;
+      finalUrl = `https://jharvis.com/api/proxy?${proxyParams.toString()}`;
     }
   } else {
     finalUrl = url + buildQueryString(queries);
