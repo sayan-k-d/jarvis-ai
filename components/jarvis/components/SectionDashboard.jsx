@@ -159,7 +159,8 @@ export function AllocationChart() {
   );
 }
 
-export default function SectionDashboard({ onOpenModal }) {
+export default function SectionDashboard({ onOpenModal, activeList }) {
+  const list = activeList && activeList.length > 0 ? activeList : stocksData;
   return (
     <section id="dashboard" className="section active">
       <div className="header">
@@ -280,7 +281,7 @@ export default function SectionDashboard({ onOpenModal }) {
             </tr>
           </thead>
           <tbody>
-            {stocksData.slice(0, 5).map((stock) => {
+            {list.map((stock) => {
               const value = formatCurrency(stock.price * stock.shares);
               const pemClass = getPemClass(stock.pem);
               const chClass = getChangeClass(stock.change);

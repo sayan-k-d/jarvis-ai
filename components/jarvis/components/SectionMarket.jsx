@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { marketData } from "../data/staticData.js";
+import { marketData, stocksData } from "../data/staticData.js";
 import { sendChatMessage } from "../services/aiServices.js";
 import { Chart, registerables } from "chart.js";
 
@@ -147,7 +147,9 @@ export function SectorChart({ marketData }) {
   );
 }
 
-export default function SectionMarket({ onOpenModal, onAskAI }) {
+export default function SectionMarket({ onOpenModal, onAskAI, activeList }) {
+  const list = activeList && activeList.length > 0 ? activeList : stocksData;
+
   const [marketSummary, setMarketSummary] = useState("");
   const [isLoadingSummary, setIsLoadingSummary] = useState(false);
   const CACHE_KEY = "world_market_summary";

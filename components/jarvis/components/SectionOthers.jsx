@@ -418,7 +418,9 @@ export function SectionPortfolioIntel({ onAskAI }) {
 
 // ── Opportunity Engine ────────────────────────────────────────
 
-export function SectionOpportunities({ onOpenModal, onAskAI }) {
+export function SectionOpportunities({ onOpenModal, onAskAI, activeList }) {
+  const list = activeList && activeList.length > 0 ? activeList : stocksData;
+
   const [opportunity, setOpportunities] = useState("");
   const [isLoadingOpportunities, setIsLoadingOpportunities] = useState(false);
 

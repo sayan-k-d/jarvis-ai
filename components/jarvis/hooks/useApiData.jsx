@@ -12,9 +12,9 @@ function proxyUrl(apiPath) {
     window.location.hostname === "127.0.0.1";
 
   if (isLocal) {
-    return `https://jharvis.com/api/proxy?api=${encodeURIComponent(apiPath)}`;
+    return `http://35.226.245.206:9092/JarvisV3/${encodeURIComponent(apiPath)}`;
   }
-  return `https://jharvis.com/api/proxy?api=${encodeURIComponent(apiPath)}`;
+  return `http://35.226.245.206:9092/JarvisV3/${encodeURIComponent(apiPath)}`;
 }
 
 function getAuthHeaders() {
@@ -67,14 +67,13 @@ export function useApiData() {
       // Parallel: PEM content, PEM rules, company overviews
       const [pemRes, rulesRes] = await Promise.all([
         fetch(
-          proxyUrl(
-            "getImportsData?metaDataName=PEM_NEW&pageNumber=0&pageSize=1000",
-          ),
-          { headers: getAuthHeaders() },
+          // proxyUrl(
+          "http://35.226.245.206:9092/JarvisV3/getImportsDataDashboard?metaDataName=PEM_NEW&pageNumber=0&pageSize=1000",
+          // ),
         )
           .then((r) => (r.ok ? r.json() : { content: [] }))
           .catch(() => ({ content: [] })),
-        fetch(proxyUrl("getAllPemRule"), { headers: getAuthHeaders() })
+        fetch("http://35.226.245.206:9092/JarvisV3/getAllPemRuleDasboard")
           .then((r) => (r.ok ? r.json() : []))
           .catch(() => []),
       ]);
@@ -94,10 +93,10 @@ export function useApiData() {
         TARGET_TICKERS.map(async (ticker) => {
           try {
             const res = await fetch(
-              proxyUrl(
-                `getCompanyOverview?size=25&page=0&keyword=${encodeURIComponent(ticker)}`,
-              ),
-              { headers: getAuthHeaders() },
+              // proxyUrl(
+              `http://35.226.245.206:9092/JarvisV3/getCompanyOverviewDataDasboard?size=25&page=0&keyword=${encodeURIComponent(ticker)}`,
+              // ),
+              // { headers: getAuthHeaders() },
             );
             if (!res.ok) return null;
             const json = await res.json();
