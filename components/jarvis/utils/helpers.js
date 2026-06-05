@@ -194,27 +194,34 @@ const buildQueryString = (params) => {
 };
 
 export const fetchWithInterceptor = async (url, queries = {}, options = {}) => {
-  // 1. Build out query parameters directly
-  let completePath = url + buildQueryString(queries);
-
-  // 2. Check environment hostname
   const isLocal =
     typeof window !== "undefined" &&
     (window.location.hostname === "localhost" ||
       window.location.hostname === "127.0.0.1");
 
-  let finalUrl = completePath;
-  if (!finalUrl.startsWith("http://") && !finalUrl.startsWith("https://")) {
+  let finalUrl = "";
+
+  if (!url.startsWith("http://") && !url.startsWith("https://")) {
     if (isLocal) {
-      // Direct local development hit
-      finalUrl = `http://35.226.245.206:9092/JarvisV3/${finalUrl}`;
+      // Direct local development fallback hits the IP directly with normal query strings
+      finalUrl = `http://35.226.245.206:9092/JarvisV3/${url}${buildQueryString(queries)}`;
     } else {
-      // Route through secure Vercel reverse proxy to bypass Mixed Content blocks
-      finalUrl = `/api/proxy?api=${encodeURIComponent(finalUrl)}`;
+      // FIX: Flatten parameters out for the Vercel proxy handler
+      const proxyParams = new URLSearchParams({ api: url });
+
+      Object.entries(queries).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          proxyParams.append(key, value);
+        }
+      });
+
+      finalUrl = `/api/proxy?${proxyParams.toString()}`;
     }
+  } else {
+    finalUrl = url + buildQueryString(queries);
   }
 
-  // 3. Set standard payload headers
+  // Set standard payload headers
   const defaultHeaders = {
     "Content-Type": "application/json",
   };
