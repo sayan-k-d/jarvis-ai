@@ -206,7 +206,7 @@ export const fetchWithInterceptor = async (url, queries = {}, options = {}) => {
       // Direct local development fallback hits the IP directly with normal query strings
       finalUrl = `http://35.226.245.206:9092/JarvisV3/${url}${buildQueryString(queries)}`;
     } else {
-      // Production: Flatten parameters out and point to the absolute jharvis.com proxy domain
+      // FIX: Flatten parameters out for the Vercel proxy handler
       const proxyParams = new URLSearchParams({ api: url });
 
       Object.entries(queries).forEach(([key, value]) => {
@@ -215,7 +215,7 @@ export const fetchWithInterceptor = async (url, queries = {}, options = {}) => {
         }
       });
 
-      finalUrl = `https://jharvis.com/api/proxy?${proxyParams.toString()}`;
+      finalUrl = `/api/proxy?${proxyParams.toString()}`;
     }
   } else {
     finalUrl = url + buildQueryString(queries);
@@ -251,3 +251,74 @@ export const fetchWithInterceptor = async (url, queries = {}, options = {}) => {
     throw error;
   }
 };
+
+// const buildQueryString = (params) => {
+//   if (!params || Object.keys(params).length === 0) return "";
+//   const searchParams = new URLSearchParams();
+//   Object.entries(params).forEach(([key, value]) => {
+//     if (value !== undefined && value !== null) {
+//       searchParams.append(key, value);
+//     }
+//   });
+//   const stringified = searchParams.toString();
+//   return stringified ? `?${stringified}` : "";
+// };
+
+// export const fetchWithInterceptor = async (url, queries = {}, options = {}) => {
+//   const isLocal =
+//     typeof window !== "undefined" &&
+//     (window.location.hostname === "localhost" ||
+//       window.location.hostname === "127.0.0.1");
+
+//   let finalUrl = "";
+
+//   if (!url.startsWith("http://") && !url.startsWith("https://")) {
+//     if (isLocal) {
+//       // Direct local development fallback hits the IP directly with normal query strings
+//       finalUrl = `http://35.226.245.206:9092/JarvisV3/${url}${buildQueryString(queries)}`;
+//     } else {
+//       // Production: Flatten parameters out and point to the absolute jharvis.com proxy domain
+//       const proxyParams = new URLSearchParams({ api: url });
+
+//       Object.entries(queries).forEach(([key, value]) => {
+//         if (value !== undefined && value !== null) {
+//           proxyParams.append(key, value);
+//         }
+//       });
+
+//       finalUrl = `https://jharvis.com/api/proxy?${proxyParams.toString()}`;
+//     }
+//   } else {
+//     finalUrl = url + buildQueryString(queries);
+//   }
+
+//   // Set standard payload headers
+//   const defaultHeaders = {
+//     "Content-Type": "application/json",
+//   };
+
+//   options.headers = {
+//     ...defaultHeaders,
+//     ...options.headers,
+//   };
+
+//   if (options.body instanceof FormData) {
+//     if (options.headers && options.headers["Content-Type"]) {
+//       delete options.headers["Content-Type"];
+//     }
+//   }
+
+//   try {
+//     const response = await fetch(finalUrl, options);
+
+//     if (!response.ok) {
+//       const errorText = await response.json().catch(() => ({}));
+//       return errorText;
+//     }
+
+//     return await response.json();
+//   } catch (error) {
+//     console.error("Public Fetch execution failure:", error);
+//     throw error;
+//   }
+// };
