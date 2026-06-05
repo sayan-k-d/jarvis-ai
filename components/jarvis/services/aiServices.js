@@ -1,5 +1,18 @@
 // chatService.js
-const API_BASE_URL = "https://e991-2a02-4780-12-a2af-00-1.ngrok-free.app";
+
+// Dynamic Base URL mapping based on environment hostname
+const getBaseUrl = () => {
+  const isLocal =
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1");
+
+  return isLocal
+    ? "http://168.231.102.73:7000" // Yields http://168.231.102.73:7000/chat in fetch below
+    : "https://e991-2a02-4780-12-a2af-00-1.ngrok-free.app";
+};
+
+const API_BASE_URL = getBaseUrl();
 
 /**
  * Sends a user message to the chat API and returns the bot's text response.

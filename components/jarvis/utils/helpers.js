@@ -180,3 +180,67 @@ export function calculatePEMScores(content, rules) {
     };
   });
 }
+
+const buildQueryString = (params) => {
+  if (!params || Object.keys(params).length === 0) return "";
+  const searchParams = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) {
+      searchParams.append(key, value);
+    }
+  });
+  const stringified = searchParams.toString();
+  return stringified ? `?${stringified}` : "";
+};
+
+export const fetchWithInterceptor = async (url, queries = {}, options = {}) => {
+  // 1. Build out query parameters directly
+  let completePath = url + buildQueryString(queries);
+
+  // 2. Check environment hostname
+  const isLocal =
+    typeof window !== "undefined" &&
+    (window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1");
+
+  let finalUrl = completePath;
+  if (!finalUrl.startsWith("http://") && !finalUrl.startsWith("https://")) {
+    if (isLocal) {
+      // Direct local development hit
+      finalUrl = `http://35.226.245.206:9092/JarvisV3/${finalUrl}`;
+    } else {
+      // Route through secure Vercel reverse proxy to bypass Mixed Content blocks
+      finalUrl = `/api/proxy?api=${encodeURIComponent(finalUrl)}`;
+    }
+  }
+
+  // 3. Set standard payload headers
+  const defaultHeaders = {
+    "Content-Type": "application/json",
+  };
+
+  options.headers = {
+    ...defaultHeaders,
+    ...options.headers,
+  };
+
+  if (options.body instanceof FormData) {
+    if (options.headers && options.headers["Content-Type"]) {
+      delete options.headers["Content-Type"];
+    }
+  }
+
+  try {
+    const response = await fetch(finalUrl, options);
+
+    if (!response.ok) {
+      const errorText = await response.json().catch(() => ({}));
+      return errorText;
+    }
+
+    return await response.json();
+  } catch (error) {
+    console.error("Public Fetch execution failure:", error);
+    throw error;
+  }
+};

@@ -1,31 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { TARGET_TICKERS } from "../data/staticData.js";
 import { calculatePEMScores, formatMarketCap } from "../utils/helpers.js";
-import { getTokenFromParent } from "../utils/tokenBridge";
-
-const BACKEND_BASE = "http://35.226.245.206:9092/JarvisV3/";
-const getToken = await getTokenFromParent();
-
-function proxyUrl(apiPath) {
-  const isLocal =
-    window.location.hostname === "localhost" ||
-    window.location.hostname === "127.0.0.1";
-
-  if (isLocal) {
-    return `http://35.226.245.206:9092/JarvisV3/${encodeURIComponent(apiPath)}`;
-  }
-  return `http://35.226.245.206:9092/JarvisV3/${encodeURIComponent(apiPath)}`;
-}
-
-function getAuthHeaders() {
-  const token = getToken;
-  // typeof window !== "undefined"
-  //   ? localStorage.getItem("access_token") || ""
-  //   : "";
-  return token
-    ? { Authorization: "Bearer " + token, "Content-Type": "application/json" }
-    : { "Content-Type": "application/json" };
-}
+import { fetchWithInterceptor } from "../utils/helpers.js"; // Check relative path matches layout
 
 function buildStockEntry(overview, pemScore) {
   return {
@@ -64,43 +40,40 @@ export function useApiData() {
   const bootstrap = useCallback(async () => {
     setApiLoading(true);
     try {
-      // Parallel: PEM content, PEM rules, company overviews
+      // Fetch public PEM metrics concurrently
       const [pemRes, rulesRes] = await Promise.all([
-        fetch(
-          // proxyUrl(
-          "http://35.226.245.206:9092/JarvisV3/getImportsDataDashboard?metaDataName=PEM_NEW&pageNumber=0&pageSize=1000",
-          // ),
-        )
-          .then((r) => (r.ok ? r.json() : { content: [] }))
-          .catch(() => ({ content: [] })),
-        fetch("http://35.226.245.206:9092/JarvisV3/getAllPemRuleDasboard")
-          .then((r) => (r.ok ? r.json() : []))
-          .catch(() => []),
+        fetchWithInterceptor("getImportsDataDashboard", {
+          metaDataName: "PEM_NEW",
+          pageNumber: 0,
+          pageSize: 1000,
+        }).catch(() => ({ content: [] })),
+        fetchWithInterceptor("getAllPemRuleDasboard").catch(() => []),
       ]);
 
-      const pemContent = pemRes.content || [];
+      const pemContent = pemRes?.content || [];
       const pemRules = Array.isArray(rulesRes)
         ? rulesRes
-        : rulesRes.content || [];
+        : rulesRes?.content || [];
       const pemScores = calculatePEMScores(pemContent, pemRules);
       const pemBySymbol = {};
+
       pemScores.forEach((item) => {
         if (item.symbol) pemBySymbol[item.symbol.trim()] = item.pemScore;
       });
 
-      // One request per ticker in parallel
+      // Query overview grids for target market tickers in parallel
       const companyResults = await Promise.all(
         TARGET_TICKERS.map(async (ticker) => {
           try {
-            const res = await fetch(
-              // proxyUrl(
-              `http://35.226.245.206:9092/JarvisV3/getCompanyOverviewDataDasboard?size=25&page=0&keyword=${encodeURIComponent(ticker)}`,
-              // ),
-              // { headers: getAuthHeaders() },
+            const json = await fetchWithInterceptor(
+              "getCompanyOverviewDataDasboard",
+              {
+                size: 25,
+                page: 0,
+                keyword: ticker,
+              },
             );
-            if (!res.ok) return null;
-            const json = await res.json();
-            const batch = json.content || [];
+            const batch = json?.content || [];
             return batch.find((c) => c.Symbol === ticker) || batch[0] || null;
           } catch {
             return null;
