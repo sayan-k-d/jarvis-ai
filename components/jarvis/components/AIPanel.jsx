@@ -18,7 +18,7 @@ export default function AIPanel({
         {
           label: "Market Summary",
           icon: "fa-globe",
-          q: "Give me a market summary",
+          q: "Give the latest market headlines",
         },
         {
           label: "Portfolio Analysis",

@@ -169,7 +169,7 @@ export default function SectionMarket({ onOpenModal, onAskAI, activeList }) {
       setIsLoadingSummary(true);
 
       const response = await sendChatMessage(
-        "What major events happened last week in World stock market?",
+        "Give the latest market headlines",
       );
 
       // Update local state and save to cache

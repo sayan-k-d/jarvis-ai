@@ -8,37 +8,77 @@ const getBaseUrl = () => {
       window.location.hostname === "127.0.0.1");
 
   return isLocal
-    ? "http://168.231.102.73:7000" // Yields http://168.231.102.73:7000/chat in fetch below
-    : "https://e991-2a02-4780-12-a2af-00-1.ngrok-free.app";
+    ? "https://n8n.srv1375926.hstgr.cloud/webhook/62430e45-1007-4638-9c42-9bdffe84886b"
+    : "https://n8n.srv1375926.hstgr.cloud/webhook/62430e45-1007-4638-9c42-9bdffe84886b";
 };
 
 const API_BASE_URL = getBaseUrl();
+
+// Retrieve or create a stable session ID for this browser session.
+// A new ID is generated each time the tab/window is opened fresh.
+const getSessionId = () => {
+  const KEY = "jarvis_session_id";
+  let id = sessionStorage.getItem(KEY);
+  if (!id) {
+    id = crypto.randomUUID();
+    sessionStorage.setItem(KEY, id);
+  }
+  return id;
+};
 
 /**
  * Sends a user message to the chat API and returns the bot's text response.
  * @param {string} message - The question or message from the user.
  * @returns {Promise<string>} The string response from the AI.
  */
+const FALLBACK_MESSAGE = "No response received from the server.";
+const MAX_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 1500;
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export const sendChatMessage = async (message) => {
-  try {
-    const response = await fetch(`${API_BASE_URL}/chat`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ message }),
-    });
+  let lastError;
 
-    if (!response.ok) {
-      throw new Error(`Server responded with status: ${response.status}`);
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      const response = await fetch(`${API_BASE_URL}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, sessionId: getSessionId() }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server responded with status: ${response.status}`);
+      }
+
+      const text = await response.text();
+      if (!text || !text.trim()) {
+        throw new Error("Empty response body");
+        // return FALLBACK_MESSAGE;
+      }
+
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch {
+        throw new Error("Invalid JSON in response");
+      }
+
+      if (data.output) return data.output;
+
+      throw new Error("Missing output field in response");
+    } catch (error) {
+      lastError = error;
+      console.warn(
+        `API attempt ${attempt}/${MAX_ATTEMPTS} failed:`,
+        error.message,
+      );
+
+      if (attempt < MAX_ATTEMPTS) await delay(RETRY_DELAY_MS);
     }
-
-    const data = await response.json();
-
-    // Fallback to a default string if data.response is missing
-    return data.response || "No response received from the server.";
-  } catch (error) {
-    console.error("API Service Error:", error);
-    throw error; // Rethrow the error so the component knows something went wrong
   }
+
+  console.error("All API attempts exhausted:", lastError);
+  return FALLBACK_MESSAGE;
 };

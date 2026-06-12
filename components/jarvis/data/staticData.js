@@ -499,7 +499,7 @@ export const riskData = {
 };
 
 export const aiResponses = {
-  "Give me a market summary":
+  "Give the latest market headlines":
     "Here's your AI Market Summary for today:\n\n<strong>Market Overview:</strong>\n• S&P 500: 5,278 (+1.8%) - Broad rally continues\n• NASDAQ: 16,485 (+2.4%) - Tech leads gains\n• DOW: 38,892 (+1.2%) - Steady performance\n\n<strong>Key Drivers:</strong>\n• Fed minutes showed dovish stance\n• NVDA earnings beat expectations\n• CPI data came in below estimates\n\n<strong>Sector Performance:</strong>\n• Leaders: Technology (+2.8%), Healthcare (+1.2%)\n• Laggards: Energy (-1.2%), Utilities (-0.8%)",
   "What changed this week?":
     "Key changes this week:\n\n• <strong>NVDA +4.5%</strong> - Upgraded to Strong Buy by Goldman Sachs\n• <strong>META +5.7%</strong> - Strong Q1 earnings beat expectations\n• <strong>TSLA -2.3%</strong> - Price pressure from new EV competition\n• <strong>S&P 500</strong> hit new all-time highs\n• <strong>Fed</strong> signaled pause in rate hikes",
