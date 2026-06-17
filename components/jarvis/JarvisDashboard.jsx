@@ -23,6 +23,7 @@ import StockModal from "./components/StockModal.jsx";
 import SectionDashboard from "./components/SectionDashboard.jsx";
 import SectionMarket from "./components/SectionMarket.jsx";
 import SectionCompare from "./components/SectionCompare.jsx";
+import StockAnalysis from "./components/StockAnalysis.jsx";
 import {
   SectionPortfolioIntel,
   SectionOpportunities,
@@ -39,7 +40,8 @@ export default function JarvisDashboard() {
   const [aiQuestion, setAiQuestion] = useState(null);
   const aiQuestionRef = useRef(null);
 
-  const { apiStocksData, apiDataReady, apiLoading } = useApiData();
+  const { apiStocksData, allStocksData, apiDataReady, apiLoading } =
+    useApiData();
 
   // Resolve stock from API data first, then static fallback
   const resolveStock = useCallback(
@@ -93,6 +95,9 @@ export default function JarvisDashboard() {
           <SectionDashboard {...sectionProps} />
         )}
         {activeSection === "market" && <SectionMarket {...sectionProps} />}
+        {activeSection === "stockAnalysis" && (
+          <StockAnalysis {...sectionProps} />
+        )}
         {activeSection === "portfolio-intel" && (
           <SectionPortfolioIntel {...sectionProps} />
         )}
@@ -101,7 +106,9 @@ export default function JarvisDashboard() {
         )}
         {activeSection === "risk" && <SectionRisk {...sectionProps} />}
         {activeSection === "stocks" && <SectionStocks {...sectionProps} />}
-        {activeSection === "screener" && <SectionScreener {...sectionProps} />}
+        {activeSection === "screener" && (
+          <SectionScreener {...sectionProps} allStocksData={allStocksData} />
+        )}
         {activeSection === "compare" && (
           <SectionCompare
             onOpenModal={handleOpenModal}

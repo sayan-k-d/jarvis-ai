@@ -7,6 +7,7 @@ export default function Sidebar({ activeSection, onNavClick }) {
         { section: "stocks", icon: "fa-chart-line", label: "All Stocks" },
         { section: "compare", icon: "fa-balance-scale", label: "Compare" },
         { section: "screener", icon: "fa-filter", label: "Screener" },
+        { section: "stockAnalysis", icon: "fa-filter", label: "Stock Analysis" },
       ],
     },
     {

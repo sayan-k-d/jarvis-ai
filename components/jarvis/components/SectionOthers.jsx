@@ -1512,8 +1512,93 @@ export function SectionStocks({ onOpenModal, activeList }) {
 
 // ── Screener Section ──────────────────────────────────────────
 
-export function SectionScreener({ onOpenModal, activeList }) {
-  const list = activeList && activeList.length > 0 ? activeList : stocksData;
+export function SectionScreener({ onOpenModal, activeList, allStocksData }) {
+  const baseList =
+    activeList && activeList.length > 0 ? activeList : stocksData;
+  // allStocksData && allStocksData.length > 0
+  //   ? allStocksData
+  
+  const [filterMarketCap, setFilterMarketCap] = useState("All Sizes");
+  const [filterPEM, setFilterPEM] = useState("All Scores");
+  const [filterSector, setFilterSector] = useState("All Sectors");
+  const [filterChange, setFilterChange] = useState("Any");
+
+  const filterDefs = [
+    {
+      label: "Market Cap",
+      opts: [
+        "All Sizes",
+        "Large Cap ($10B+)",
+        "Mid Cap ($2B-$10B)",
+        "Small Cap (<$2B)",
+      ],
+      value: filterMarketCap,
+      onChange: setFilterMarketCap,
+    },
+    {
+      label: "PEM Score",
+      opts: ["All Scores", "High (70+)", "Medium (50-70)", "Low (<50)"],
+      value: filterPEM,
+      onChange: setFilterPEM,
+    },
+    {
+      label: "Sector",
+      opts: [
+        "All Sectors",
+        "Technology",
+        "Healthcare",
+        "Financials",
+        "Consumer",
+      ],
+      value: filterSector,
+      onChange: setFilterSector,
+    },
+    {
+      label: "Price Change",
+      opts: ["Any", "+5% or more", "+2% or more", "-2% or less"],
+      value: filterChange,
+      onChange: setFilterChange,
+    },
+  ];
+
+  const filteredList = baseList
+    .filter((stock) => {
+      if (filterMarketCap !== "All Sizes") {
+        const raw = stock.marketCapRaw || 0;
+        if (filterMarketCap === "Large Cap ($10B+)" && raw < 10e9) return false;
+        if (
+          filterMarketCap === "Mid Cap ($2B-$10B)" &&
+          (raw < 2e9 || raw >= 10e9)
+        )
+          return false;
+        if (filterMarketCap === "Small Cap (<$2B)" && raw >= 2e9) return false;
+      }
+      if (filterPEM !== "All Scores") {
+        if (filterPEM === "High (70+)" && stock.pem < 70) return false;
+        if (
+          filterPEM === "Medium (50-70)" &&
+          (stock.pem < 50 || stock.pem >= 70)
+        )
+          return false;
+        if (filterPEM === "Low (<50)" && stock.pem >= 50) return false;
+      }
+      if (filterSector !== "All Sectors") {
+        const sector = (stock.sector || "").toLowerCase();
+        if (filterSector === "Consumer") {
+          if (!sector.includes("consumer")) return false;
+        } else {
+          if (!sector.includes(filterSector.toLowerCase())) return false;
+        }
+      }
+      if (filterChange !== "Any") {
+        if (filterChange === "+5% or more" && stock.change < 5) return false;
+        if (filterChange === "+2% or more" && stock.change < 2) return false;
+        if (filterChange === "-2% or less" && stock.change > -2) return false;
+      }
+      return true;
+    })
+    .sort((a, b) => b.pem - a.pem);
+
   return (
     <section id="screener" className="section active">
       <div className="header">
@@ -1531,35 +1616,7 @@ export function SectionScreener({ onOpenModal, activeList }) {
             gap: 16,
           }}
         >
-          {[
-            {
-              label: "Market Cap",
-              opts: [
-                "All Sizes",
-                "Large Cap ($10B+)",
-                "Mid Cap ($2B-$10B)",
-                "Small Cap (<$2B)",
-              ],
-            },
-            {
-              label: "PEM Score",
-              opts: ["All Scores", "High (70+)", "Medium (50-70)", "Low (<50)"],
-            },
-            {
-              label: "Sector",
-              opts: [
-                "All Sectors",
-                "Technology",
-                "Healthcare",
-                "Financials",
-                "Consumer",
-              ],
-            },
-            {
-              label: "Price Change",
-              opts: ["Any", "+5% or more", "+2% or more", "-2% or less"],
-            },
-          ].map((f) => (
+          {filterDefs.map((f) => (
             <div key={f.label}>
               <label
                 style={{
@@ -1572,6 +1629,8 @@ export function SectionScreener({ onOpenModal, activeList }) {
                 {f.label}
               </label>
               <select
+                value={f.value}
+                onChange={(e) => f.onChange(e.target.value)}
                 style={{
                   width: "100%",
                   padding: 10,
@@ -1596,7 +1655,7 @@ export function SectionScreener({ onOpenModal, activeList }) {
       </div>
       <div className="holdings-card">
         <div className="table-header">
-          <h3>Filtered Results ({list.length} stocks)</h3>
+          <h3>Filtered Results ({filteredList.length} stocks)</h3>
         </div>
         <table>
           <thead>
@@ -1611,7 +1670,7 @@ export function SectionScreener({ onOpenModal, activeList }) {
             </tr>
           </thead>
           <tbody>
-            {list.map((stock) => {
+            {filteredList.map((stock) => {
               const pemClass = getPemClass(stock.pem);
               const chClass = getChangeClass(stock.change);
               const chSign = getChangeSign(stock.change);
