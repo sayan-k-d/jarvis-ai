@@ -60,7 +60,7 @@ export const globalCSS = `
   .user-details h4 { font-size: 0.85em; font-weight: 500; }
   .user-details span { font-size: 0.7em; color: var(--text-muted); }
 
-  .main-content { margin-left: var(--sidebar-width); padding: 24px 32px; min-height: 100vh; }
+  .main-content { margin-left: var(--sidebar-width); padding: 0 0 0 32px; min-height: 100vh; }
 
   .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 32px; }
   .header-left h2 { font-size: 1.5em; font-weight: 600; margin-bottom: 4px; }
