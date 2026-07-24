@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 
 // --- MOCK DATA ---
 const STOCK_DATA = {
@@ -66,16 +66,56 @@ const STOCK_DATA = {
   },
 };
 
+const AGENTS = [
+  "Market Analyst",
+  "Social Media Analyst",
+  "News Analyst",
+  "Fundamentals Analyst",
+  "Risk Analyst",
+];
+
+const PIPELINE = [...AGENTS, "Trader", "Portfolio Manager"];
+
+const TICKERS = Object.keys(STOCK_DATA);
+
+// --- HOOK: media query ---
+function useMediaQuery(query) {
+  const [matches, setMatches] = useState(() =>
+    typeof window !== "undefined" ? window.matchMedia(query).matches : false,
+  );
+  useEffect(() => {
+    const mql = window.matchMedia(query);
+    const onChange = (e) => setMatches(e.matches);
+    mql.addEventListener("change", onChange);
+    setMatches(mql.matches);
+    return () => mql.removeEventListener("change", onChange);
+  }, [query]);
+  return matches;
+}
+
 // --- REUSABLE SVG ICONS ---
 const SparkleIcon = () => (
-  <svg viewBox="0 0 24 24">
+  <svg viewBox="0 0 24 24" aria-hidden="true">
     <path d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
   </svg>
 );
 
 const ArrowIcon = () => (
-  <svg viewBox="0 0 24 24">
+  <svg viewBox="0 0 24 24" aria-hidden="true">
     <path d="M14 5l7 7m0 0l-7 7m7-7H3" />
+  </svg>
+);
+
+const ChevronIcon = ({ open }) => (
+  <svg
+    viewBox="0 0 24 24"
+    aria-hidden="true"
+    style={{
+      transform: open ? "rotate(180deg)" : "none",
+      transition: "transform 0.2s",
+    }}
+  >
+    <path d="M6 9l6 6 6-6" />
   </svg>
 );
 
@@ -92,7 +132,7 @@ const HomeView = ({ onSearch }) => {
       setError("");
       onSearch(ticker);
     } else {
-      setError("Please enter one of: AAPL, GOOGL, AMZN, NFLX, TSLA...");
+      setError(`Try one of: ${TICKERS.join(", ")}`);
     }
   };
 
@@ -109,15 +149,41 @@ const HomeView = ({ onSearch }) => {
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Enter a NASDAQ-100 ticker (AAPL, MSFT...)"
+          placeholder="Enter a ticker (AAPL, GOOGL...)"
           className="ta-input"
+          aria-label="Stock ticker"
+          autoComplete="off"
+          autoCapitalize="characters"
+          spellCheck="false"
         />
-        <button type="submit" className="ta-submit">
+        <button type="submit" className="ta-submit" aria-label="Analyze">
           <ArrowIcon />
         </button>
       </form>
 
-      {error && <p className="ta-error">{error}</p>}
+      {error && (
+        <p className="ta-error" role="alert">
+          {error}
+        </p>
+      )}
+
+      {/* Tap-to-fill chips — much friendlier than typing on a phone */}
+      <div className="ta-ticker-chips">
+        {TICKERS.map((t) => (
+          <button
+            key={t}
+            type="button"
+            className="ta-chip"
+            onClick={() => {
+              setInput(t);
+              setError("");
+              onSearch(t);
+            }}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
 
       <p className="ta-hint">
         <small>Not investment advice. For informational use only.</small>
@@ -128,16 +194,9 @@ const HomeView = ({ onSearch }) => {
 
 const LoadingView = ({ ticker, onComplete }) => {
   const [progress, setProgress] = useState(0);
-  const agents = [
-    "Market Analyst",
-    "Social Media Analyst",
-    "News Analyst",
-    "Fundamentals Analyst",
-    "Risk Analyst",
-  ];
 
   useEffect(() => {
-    const duration = 3000; // 3 second mock load
+    const duration = 3000;
     const interval = 100;
     const steps = duration / interval;
     let currentStep = 0;
@@ -159,17 +218,18 @@ const LoadingView = ({ ticker, onComplete }) => {
       <div className="ta-loading-card">
         <h2 className="ta-loading-title">
           <span className="ta-spinner">↻</span>
-          Preparing analysis...
+          <span className="ta-loading-text">
+            Analyzing <strong>{ticker}</strong>...
+          </span>
         </h2>
 
         <div className="ta-agent-list">
-          {agents.map((agent, idx) => {
-            const isDone = progress > (idx + 1) * (100 / agents.length);
-            const isCurrent = !isDone && progress > idx * (100 / agents.length);
+          {AGENTS.map((agent, idx) => {
+            const isDone = progress > (idx + 1) * (100 / AGENTS.length);
+            const isCurrent = !isDone && progress > idx * (100 / AGENTS.length);
 
             let statusClass = "waiting";
             let statusText = "waiting";
-
             if (isDone) {
               statusClass = "done";
               statusText = "done";
@@ -193,7 +253,13 @@ const LoadingView = ({ ticker, onComplete }) => {
           })}
         </div>
 
-        <div className="ta-progress-bg">
+        <div
+          className="ta-progress-bg"
+          role="progressbar"
+          aria-valuenow={Math.round(progress)}
+          aria-valuemin={0}
+          aria-valuemax={100}
+        >
           <div className="ta-progress-fill" style={{ width: `${progress}%` }} />
         </div>
       </div>
@@ -203,42 +269,52 @@ const LoadingView = ({ ticker, onComplete }) => {
 
 const DashboardView = ({ ticker, onReset }) => {
   const data = STOCK_DATA[ticker];
+  const isMobile = useMediaQuery("(max-width: 768px)");
+  const [pipelineOpen, setPipelineOpen] = useState(false);
+
+  // Sidebar is always expanded on desktop, collapsible on mobile
+  const showPipeline = !isMobile || pipelineOpen;
 
   return (
     <div className="ta-dashboard">
-      {/* LEFT SIDEBAR */}
+      {/* LEFT SIDEBAR / mobile accordion */}
       <div className="ta-sidebar-left">
-        <div className="ta-sidebar-header">
+        <button
+          className="ta-sidebar-header ta-sidebar-toggle"
+          onClick={() => isMobile && setPipelineOpen((o) => !o)}
+          aria-expanded={showPipeline}
+          type="button"
+        >
           <SparkleIcon />
           <span>Trading Agents</span>
-        </div>
-        <div className="ta-sidebar-content">
-          <h3 className="ta-section-title">Agent Pipeline</h3>
-          <ul className="ta-menu-list">
-            {[
-              "Market Analyst",
-              "Social Media Analyst",
-              "News Analyst",
-              "Fundamentals Analyst",
-              "Risk Analyst",
-              "Trader",
-              "Portfolio Manager",
-            ].map((agent) => (
-              <li key={agent} className="ta-menu-item">
-                <div className="ta-dot"></div>
-                {agent}
-              </li>
-            ))}
-          </ul>
-        </div>
+          <span className="ta-chevron">
+            <ChevronIcon open={pipelineOpen} />
+          </span>
+        </button>
+
+        {showPipeline && (
+          <div className="ta-sidebar-content">
+            <h3 className="ta-section-title">Agent Pipeline</h3>
+            <ul className="ta-menu-list">
+              {PIPELINE.map((agent) => (
+                <li key={agent} className="ta-menu-item">
+                  <div className="ta-dot"></div>
+                  <span>{agent}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
 
       {/* MAIN CONTENT AREA */}
       <div className="ta-main-area">
         <header className="ta-header-bar">
-          <h2 className="ta-header-title">Final Trade Decision: {ticker}</h2>
-          <button onClick={onReset} className="ta-btn-outline">
-            Analyze Another Stock
+          <h2 className="ta-header-title">
+            Final Trade Decision: <strong>{ticker}</strong>
+          </h2>
+          <button onClick={onReset} className="ta-btn-outline" type="button">
+            {isMobile ? "New Analysis" : "Analyze Another Stock"}
           </button>
         </header>
 
@@ -284,25 +360,23 @@ const DashboardView = ({ ticker, onReset }) => {
 
 // --- MAIN APP COMPONENT ---
 export default function StockAnalysis() {
-  const [view, setView] = useState("home"); // 'home', 'loading', 'dashboard'
+  const [view, setView] = useState("home");
   const [selectedTicker, setSelectedTicker] = useState(null);
 
-  const handleSearch = (ticker) => {
+  const handleSearch = useCallback((ticker) => {
     setSelectedTicker(ticker);
     setView("loading");
-  };
+  }, []);
 
-  const handleLoadingComplete = () => {
-    setView("dashboard");
-  };
+  const handleLoadingComplete = useCallback(() => setView("dashboard"), []);
 
-  const handleReset = () => {
+  const handleReset = useCallback(() => {
     setSelectedTicker(null);
     setView("home");
-  };
+  }, []);
 
   return (
-    <>
+    <section className="section active ta-section">
       {view === "home" && <HomeView onSearch={handleSearch} />}
       {view === "loading" && (
         <LoadingView
@@ -313,6 +387,6 @@ export default function StockAnalysis() {
       {view === "dashboard" && (
         <DashboardView ticker={selectedTicker} onReset={handleReset} />
       )}
-    </>
+    </section>
   );
 }

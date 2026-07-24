@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import {
   transactions,
   opportunities,
@@ -12,151 +12,247 @@ import {
   getChangeSign,
 } from "../utils/helpers.js";
 import { sendChatMessage } from "../services/aiServices.js";
+import ResponsiveStockTable from "./ResponsiveStockTable.jsx";
 import { Chart, registerables } from "chart.js";
 
 Chart.register(...registerables);
-// ── Portfolio Intelligence ────────────────────────────────────
+
+/* ── Shared hooks ─────────────────────────────────────────── */
+
+export function useMediaQuery(query) {
+  const [matches, setMatches] = useState(false);
+  useEffect(() => {
+    const mql = window.matchMedia(query);
+    const onChange = (e) => setMatches(e.matches);
+    setMatches(mql.matches);
+    mql.addEventListener("change", onChange);
+    return () => mql.removeEventListener("change", onChange);
+  }, [query]);
+  return matches;
+}
+
+export function useChartResize(chartRef, wrapperRef, deps = []) {
+  useEffect(() => {
+    const el = wrapperRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+
+    let frame = 0;
+    let disposed = false;
+
+    const resize = () => {
+      if (disposed) return;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (disposed) return;
+        const chart = chartRef.current;
+        // chart.ctx is nulled by destroy() — catches a torn-down instance
+        // that chartRef.current hasn't been cleared for yet
+        if (!chart || !chart.ctx || !chart.canvas?.isConnected) return;
+
+        const { width, height } = el.getBoundingClientRect();
+        if (width < 1 || height < 1) return; // hidden section (display:none)
+
+        try {
+          chart.resize(width, height);
+        } catch (error) {
+          console.warn("Chart resize skipped:", error);
+        }
+      });
+    };
+
+    const ro = new ResizeObserver(resize);
+    ro.observe(el);
+    resize(); // initial size
+
+    return () => {
+      disposed = true;
+      cancelAnimationFrame(frame);
+      ro.disconnect();
+    };
+  }, deps);
+}
+
+/* Cached AI text fetch — shared by all three intel sections */
+function useCachedInsight(cacheKey, prompt) {
+  const [text, setText] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const fetchInsight = useCallback(
+    async (forceRefresh = false) => {
+      if (!forceRefresh) {
+        const cached = sessionStorage.getItem(cacheKey);
+        if (cached) {
+          setText(cached);
+          return;
+        }
+      }
+      try {
+        setLoading(true);
+        const response = await sendChatMessage(prompt);
+        setText(response);
+        sessionStorage.setItem(cacheKey, response);
+      } catch (error) {
+        console.error(`Error fetching ${cacheKey}:`, error);
+        setText((prev) =>
+          prev ? prev : "Unable to load this analysis at the moment.",
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [cacheKey, prompt],
+  );
+
+  useEffect(() => {
+    fetchInsight(false);
+  }, [fetchInsight]);
+
+  return { text, loading, refresh: () => fetchInsight(true) };
+}
+
+const NO_ACCESS = "I currently do not have access";
+
+/* ── Portfolio Intelligence ───────────────────────────────── */
 
 export function BenchmarkChart() {
   const canvasRef = useRef(null);
+  const wrapperRef = useRef(null);
+  const chartRef = useRef(null);
+  const isMobile = useMediaQuery("(max-width: 768px)");
 
   useEffect(() => {
     const ctx = canvasRef.current;
-    let myBenchmarkChart = null;
+    if (!ctx) return;
 
-    if (ctx) {
-      myBenchmarkChart = new Chart(ctx, {
-        type: "line",
-        data: {
-          labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
-          datasets: [
-            {
-              label: "Portfolio",
-              data: [100, 104, 108, 112, 115, 120],
-              borderColor: "#06b6d4",
-              backgroundColor: "rgba(6, 182, 212, 0.1)", // Area fill color
-              fill: true,
-              borderWidth: 2,
-              tension: 0.3, // Subtle smoothing to match area aesthetic
-              pointRadius: 0,
-              pointHoverRadius: 5,
-            },
-            {
-              label: "S&P 500",
-              data: [100, 102, 105, 107, 109, 112],
-              borderColor: "#64748b",
-              backgroundColor: "transparent",
-              fill: false,
-              borderWidth: 1.5,
-              borderDash: [5, 5], // Mimics the Highcharts 'Dash' style
-              tension: 0.3,
-              pointRadius: 0,
-              pointHoverRadius: 5,
-            },
-          ],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: {
-              display: true,
-              position: "top",
-              labels: {
-                color: "#94a3b8",
-                boxWidth: 12,
-                padding: 20,
-                font: { family: "Inter, sans-serif" },
+    let chart = null;
+    let cancelled = false;
+
+    // Defer past StrictMode's synchronous mount→unmount→mount cycle
+    const raf = requestAnimationFrame(() => {
+      if (cancelled || !ctx.isConnected) return;
+      try {
+        chart = new Chart(ctx, {
+          type: "line",
+          data: {
+            labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+            datasets: [
+              {
+                label: "Portfolio",
+                data: [100, 104, 108, 112, 115, 120],
+                borderColor: "#06b6d4",
+                backgroundColor: "rgba(6, 182, 212, 0.1)",
+                fill: true,
+                borderWidth: 2,
+                tension: 0.3,
+                pointRadius: 0,
+                pointHoverRadius: 5,
+                pointHitRadius: 20,
+              },
+              {
+                label: "S&P 500",
+                data: [100, 102, 105, 107, 109, 112],
+                borderColor: "#64748b",
+                backgroundColor: "transparent",
+                fill: false,
+                borderWidth: 1.5,
+                borderDash: [5, 5],
+                tension: 0.3,
+                pointRadius: 0,
+                pointHoverRadius: 5,
+                pointHitRadius: 20,
+              },
+            ],
+          },
+          options: {
+            responsive: false,
+            maintainAspectRatio: false,
+            animation: false,
+            resizeDelay: 100,
+            interaction: { mode: "index", intersect: false },
+            plugins: {
+              legend: {
+                display: true,
+                position: "top",
+                align: isMobile ? "start" : "center",
+                labels: {
+                  color: "#94a3b8",
+                  boxWidth: 12,
+                  padding: isMobile ? 10 : 20,
+                  usePointStyle: true,
+                  font: {
+                    family: "Inter, sans-serif",
+                    size: isMobile ? 10 : 12,
+                  },
+                },
+              },
+              tooltip: {
+                backgroundColor: "#1a2332",
+                borderColor: "rgba(255,255,255,0.08)",
+                borderWidth: 1,
+                titleColor: "#f8fafc",
+                bodyColor: "#f8fafc",
+                padding: 10,
+                callbacks: {
+                  label: (c) => ` ${c.dataset.label}: ${c.raw}%`,
+                },
               },
             },
-            tooltip: {
-              backgroundColor: "#1a2332",
-              borderColor: "rgba(255,255,255,0.08)",
-              borderWidth: 1,
-              titleColor: "#f8fafc",
-              bodyColor: "#f8fafc",
-              callbacks: {
-                // Formats tooltip values to include the % suffix
-                label: (context) =>
-                  ` ${context.dataset.label}: ${context.raw}%`,
+            scales: {
+              x: {
+                grid: { color: "rgba(148, 163, 184, 0.1)", drawTicks: false },
+                ticks: {
+                  color: "#94a3b8",
+                  font: { size: isMobile ? 9 : 11 },
+                  maxRotation: 0,
+                  maxTicksLimit: isMobile ? 4 : 6,
+                },
+              },
+              y: {
+                grid: { color: "rgba(148, 163, 184, 0.1)", drawTicks: false },
+                ticks: {
+                  color: "#94a3b8",
+                  font: { size: isMobile ? 9 : 11 },
+                  maxTicksLimit: isMobile ? 4 : 6,
+                  padding: 6,
+                  callback: (v) => v + "%",
+                },
               },
             },
           },
-          scales: {
-            x: {
-              grid: { color: "rgba(148, 163, 184, 0.1)" },
-              ticks: { color: "#94a3b8" },
-            },
-            y: {
-              grid: { color: "rgba(148, 163, 184, 0.1)" },
-              ticks: {
-                color: "#94a3b8",
-                // Appends the % sign to the y-axis values
-                callback: (v) => v + "%",
-              },
-            },
-          },
-        },
-      });
-    }
+        });
+        chartRef.current = chart;
+      } catch (err) {
+        console.error("Chart init failed:", err);
+      }
+    });
 
-    // Clean up chart instance cleanly on unmount to avoid canvas conflicts
     return () => {
-      if (myBenchmarkChart) {
-        myBenchmarkChart.destroy();
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      chartRef.current = null;
+      if (chart) {
+        try {
+          chart.destroy();
+        } catch {}
+        chart = null;
       }
     };
   }, []);
 
+  useChartResize(chartRef, wrapperRef, [isMobile]);
+
   return (
-    <div style={{ height: "100%", width: "100%" }}>
+    <div ref={wrapperRef} className="canvas-wrap">
       <canvas ref={canvasRef} />
     </div>
   );
 }
 
 export function SectionPortfolioIntel({ onAskAI }) {
-  const [portfolioIntel, setportfolioIntel] = useState("");
-  const [isLoadingIntel, setIsLoadingIntel] = useState(false);
-
-  const CACHE_KEY = "initial_summary";
-
-  const fetchInitialSummury = async (forceRefresh = false) => {
-    // 1. If not a forced refresh, look for data inside the cache first
-    if (!forceRefresh) {
-      const cachedData = sessionStorage.getItem(CACHE_KEY);
-      if (cachedData) {
-        setportfolioIntel(cachedData);
-        return; // Exit early, no API call needed!
-      }
-    }
-
-    // 2. Fetch fresh data if cache missed or if user clicked Refresh
-    try {
-      setIsLoadingIntel(true);
-
-      const response = await sendChatMessage(
-        "Analyze my portfolio performance",
-      );
-
-      // Update local state and save to cache
-      setportfolioIntel(response);
-      sessionStorage.setItem(CACHE_KEY, response);
-    } catch (error) {
-      console.error("Error fetching market summary:", error);
-      // Fallback message if there's no pre-existing text to show
-      if (!marketSummary) {
-        setportfolioIntel("Unable to load the market summary at this time.");
-      }
-    } finally {
-      setIsLoadingIntel(false);
-    }
-  };
-
-  // Run automatically on page load / component mount
-  useEffect(() => {
-    fetchInitialSummury(false);
-  }, []);
+  const { text: portfolioIntel, loading: isLoadingIntel } = useCachedInsight(
+    "initial_summary",
+    "Analyze my portfolio performance",
+  );
 
   return (
     <section id="portfolio-intel" className="section active">
@@ -164,52 +260,40 @@ export function SectionPortfolioIntel({ onAskAI }) {
         <div className="header-left">
           <h2>
             <i
-              className="fas fa-brain"
-              style={{ color: "var(--accent-purple)", marginRight: 12 }}
+              className="fas fa-brain section-title-icon"
+              style={{ color: "var(--accent-purple)" }}
             ></i>
             Portfolio Intelligence
           </h2>
           <p>{`"What is driving performance?" — AI-powered portfolio analysis`}</p>
         </div>
-        <div className="header-right">
+        <div className="header-right header-actions">
           <button className="btn btn-secondary">
-            <i className="fas fa-download"></i> Export
+            <i className="fas fa-download"></i> <span>Export</span>
           </button>
           <button
             className="btn btn-primary"
             onClick={() => onAskAI("Analyze my portfolio performance")}
           >
-            <i className="fas fa-robot"></i> Ask AI
+            <i className="fas fa-robot"></i> <span>Ask AI</span>
           </button>
         </div>
       </div>
 
-      <div
-        className="chart-card"
-        style={{
-          marginBottom: 24,
-          borderLeft: "4px solid var(--accent-purple)",
-        }}
-      >
-        <h3 style={{ marginBottom: 12 }}>
+      <div className="chart-card insight-card insight-purple">
+        <h3 className="insight-title">
           <i
             className="fas fa-brain"
-            style={{ color: "var(--accent-cyan)", marginRight: 8 }}
+            style={{ color: "var(--accent-cyan)" }}
           ></i>
           AI Portfolio Summary
         </h3>
-        <p
-          style={{
-            fontSize: "0.9em",
-            lineHeight: 1.7,
-            color: "var(--text-secondary)",
-          }}
-        >
+        <p className="insight-body">
           {isLoadingIntel ? (
-            <span style={{ opacity: 0.6, fontStyle: "italic" }}>
+            <span className="insight-loading">
               Generating live market insights...
             </span>
-          ) : portfolioIntel.includes("I currently do not have access") ? (
+          ) : portfolioIntel.includes(NO_ACCESS) ? (
             <span>
               Your portfolio is{" "}
               <strong style={{ color: "var(--accent-emerald)" }}>
@@ -228,10 +312,7 @@ export function SectionPortfolioIntel({ onAskAI }) {
         </p>
       </div>
 
-      <div
-        className="stats-grid"
-        style={{ gridTemplateColumns: "repeat(4, 1fr)" }}
-      >
+      <div className="stats-grid">
         <div className="stat-card">
           <div className="stat-card-header">
             <h4>Portfolio Value</h4>
@@ -239,7 +320,8 @@ export function SectionPortfolioIntel({ onAskAI }) {
           </div>
           <div className="stat-value">$2.47M</div>
           <div className="stat-change positive">
-            <i className="fas fa-arrow-up"></i>+$127,450 (+5.44%)
+            <i className="fas fa-arrow-up"></i>
+            <span>+$127,450 (+5.44%)</span>
           </div>
         </div>
         <div className="stat-card">
@@ -254,7 +336,8 @@ export function SectionPortfolioIntel({ onAskAI }) {
             +0.5%
           </div>
           <div className="stat-change positive">
-            <i className="fas fa-arrow-up"></i>Outperforming S&amp;P 500
+            <i className="fas fa-arrow-up"></i>
+            <span>Outperforming S&amp;P 500</span>
           </div>
         </div>
         <div className="stat-card">
@@ -269,7 +352,8 @@ export function SectionPortfolioIntel({ onAskAI }) {
             +16.4%
           </div>
           <div className="stat-change positive">
-            <i className="fas fa-arrow-up"></i>+$347,200 unrealized
+            <i className="fas fa-arrow-up"></i>
+            <span>+$347,200 unrealized</span>
           </div>
         </div>
         <div className="stat-card">
@@ -289,13 +373,10 @@ export function SectionPortfolioIntel({ onAskAI }) {
         </div>
       </div>
 
-      <div
-        className="stats-grid"
-        style={{ gridTemplateColumns: "repeat(4, 1fr)", marginTop: 20 }}
-      >
+      <div className="stats-grid stats-grid-secondary">
         <div className="stat-card">
           <div className="stat-card-header">
-            <h4>Caption</h4>
+            <h4>Cash Position</h4>
             <i
               className="fas fa-money-bill"
               style={{ color: "var(--accent-emerald)" }}
@@ -315,7 +396,8 @@ export function SectionPortfolioIntel({ onAskAI }) {
           </div>
           <div className="stat-value">$8,450</div>
           <div className="stat-change positive">
-            <i className="fas fa-arrow-up"></i>+12% YTD
+            <i className="fas fa-arrow-up"></i>
+            <span>+12% YTD</span>
           </div>
         </div>
       </div>
@@ -339,11 +421,12 @@ export function SectionPortfolioIntel({ onAskAI }) {
             <BenchmarkChart />
           </div>
         </div>
+
         <div className="holdings-card">
           <div className="table-header">
             <h3>Recent Transactions</h3>
           </div>
-          <div id="transactionsList">
+          <div className="tx-list">
             {transactions.map((tx, i) => {
               const icon =
                 tx.type === "buy"
@@ -368,44 +451,17 @@ export function SectionPortfolioIntel({ onAskAI }) {
                   ? `$${tx.amount.toFixed(2)}`
                   : `${tx.shares} @ $${tx.price.toFixed(2)}`;
               return (
-                <div
-                  key={i}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    padding: 12,
-                    borderBottom: "1px solid var(--border-color)",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 8,
-                      background: `${color}20`,
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
+                <div key={i} className="tx-row">
+                  <div className="tx-icon" style={{ background: `${color}20` }}>
                     <i className={`fas fa-${icon}`} style={{ color }}></i>
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <h4 style={{ fontSize: "0.85em" }}>
+                  <div className="tx-body">
+                    <h4>
                       {label} {tx.symbol}
                     </h4>
-                    <span
-                      style={{ fontSize: "0.7em", color: "var(--text-muted)" }}
-                    >
-                      {detail}
-                    </span>
+                    <span>{detail}</span>
                   </div>
-                  <span
-                    style={{ fontSize: "0.7em", color: "var(--text-muted)" }}
-                  >
-                    {tx.date}
-                  </span>
+                  <span className="tx-date">{tx.date}</span>
                 </div>
               );
             })}
@@ -416,52 +472,14 @@ export function SectionPortfolioIntel({ onAskAI }) {
   );
 }
 
-// ── Opportunity Engine ────────────────────────────────────────
+/* ── Opportunity Engine ───────────────────────────────────── */
 
-export function SectionOpportunities({ onOpenModal, onAskAI, activeList }) {
-  const list = activeList && activeList.length > 0 ? activeList : stocksData;
+const OPPORTUNITY_PROMPT =
+  "Which Sectors are stocks are best right now , Which sectors or stocks should i look for investements ? Give reasons why should we choose that stock";
 
-  const [opportunity, setOpportunities] = useState("");
-  const [isLoadingOpportunities, setIsLoadingOpportunities] = useState(false);
-
-  const CACHE_KEY = "opportunity_summary";
-
-  const fetchOpportunity = async (forceRefresh = false) => {
-    // 1. If not a forced refresh, look for data inside the cache first
-    if (!forceRefresh) {
-      const cachedData = sessionStorage.getItem(CACHE_KEY);
-      if (cachedData) {
-        setOpportunities(cachedData);
-        return; // Exit early, no API call needed!
-      }
-    }
-
-    // 2. Fetch fresh data if cache missed or if user clicked Refresh
-    try {
-      setIsLoadingOpportunities(true);
-
-      const response = await sendChatMessage(
-        "Which Sectors are stocks are best right now , Which sectors or stocks should i look for investements ? Give reasons why should we choose that stock",
-      );
-
-      // Update local state and save to cache
-      setOpportunities(response);
-      sessionStorage.setItem(CACHE_KEY, response);
-    } catch (error) {
-      console.error("Error fetching market summary:", error);
-      // Fallback message if there's no pre-existing text to show
-      if (!marketSummary) {
-        setOpportunities("Unable to load the market summary at this time.");
-      }
-    } finally {
-      setIsLoadingOpportunities(false);
-    }
-  };
-
-  // Run automatically on page load / component mount
-  useEffect(() => {
-    fetchOpportunity(false);
-  }, []);
+export function SectionOpportunities({ onOpenModal, onAskAI }) {
+  const { text: opportunity, loading: isLoadingOpportunities } =
+    useCachedInsight("opportunity_summary", OPPORTUNITY_PROMPT);
 
   return (
     <section id="opportunities" className="section active">
@@ -469,56 +487,40 @@ export function SectionOpportunities({ onOpenModal, onAskAI, activeList }) {
         <div className="header-left">
           <h2>
             <i
-              className="fas fa-lightbulb"
-              style={{ color: "var(--accent-amber)", marginRight: 12 }}
+              className="fas fa-lightbulb section-title-icon"
+              style={{ color: "var(--accent-amber)" }}
             ></i>
             Opportunity Engine
           </h2>
           <p>{`"Where should we look?" — AI-detected investment opportunities`}</p>
         </div>
-        <div className="header-right">
+        <div className="header-right header-actions">
           <button className="btn btn-secondary">
-            <i className="fas fa-filter"></i> Filter
+            <i className="fas fa-filter"></i> <span>Filter</span>
           </button>
           <button
             className="btn btn-primary"
-            onClick={() =>
-              onAskAI(
-                "Which Sectors are stocks are best right now , Which sectors or stocks should i look for investements ? Give reasons why should we choose that stock",
-              )
-            }
+            onClick={() => onAskAI(OPPORTUNITY_PROMPT)}
           >
-            <i className="fas fa-robot"></i> Ask AI
+            <i className="fas fa-robot"></i> <span>Ask AI</span>
           </button>
         </div>
       </div>
 
-      <div
-        className="chart-card"
-        style={{
-          marginBottom: 24,
-          borderLeft: "4px solid var(--accent-amber)",
-        }}
-      >
-        <h3 style={{ marginBottom: 12 }}>
+      <div className="chart-card insight-card insight-amber">
+        <h3 className="insight-title">
           <i
             className="fas fa-brain"
-            style={{ color: "var(--accent-cyan)", marginRight: 8 }}
+            style={{ color: "var(--accent-cyan)" }}
           ></i>
           AI Opportunity Analysis
         </h3>
-        <p
-          style={{
-            fontSize: "0.9em",
-            lineHeight: 1.7,
-            color: "var(--text-secondary)",
-          }}
-        >
+        <p className="insight-body">
           {isLoadingOpportunities ? (
-            <span style={{ opacity: 0.6, fontStyle: "italic" }}>
+            <span className="insight-loading">
               Generating live market insights...
             </span>
-          ) : opportunity.includes("I currently do not have access") ? (
+          ) : opportunity.includes(NO_ACCESS) ? (
             <span>
               Found{" "}
               <strong style={{ color: "var(--accent-amber)" }}>
@@ -566,7 +568,8 @@ export function SectionOpportunities({ onOpenModal, onAskAI, activeList }) {
             3
           </div>
           <div className="stat-change positive">
-            <i className="fas fa-arrow-up"></i>Strong buy signals
+            <i className="fas fa-arrow-up"></i>
+            <span>Strong buy signals</span>
           </div>
         </div>
         <div className="stat-card">
@@ -606,7 +609,7 @@ export function SectionOpportunities({ onOpenModal, onAskAI, activeList }) {
         </div>
       </div>
 
-      <div style={{ marginTop: 20 }}>
+      <div className="opp-list">
         {opportunities.map((opp) => {
           const convictionColor =
             opp.conviction === "High"
@@ -615,67 +618,38 @@ export function SectionOpportunities({ onOpenModal, onAskAI, activeList }) {
           return (
             <div
               key={opp.symbol}
-              className="holdings-card"
-              style={{ marginBottom: 16, cursor: "pointer" }}
+              className="opp-card"
+              role="button"
+              tabIndex={0}
               onClick={() => onOpenModal(opp.symbol)}
+              onKeyDown={(e) => e.key === "Enter" && onOpenModal(opp.symbol)}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                <div
-                  className="stock-logo"
-                  style={{ width: 50, height: 50, fontSize: "1em" }}
-                >
+              <div className="opp-main">
+                <div className="stock-logo opp-logo">
                   {opp.symbol.slice(0, 2)}
                 </div>
-                <div style={{ flex: 1 }}>
-                  <h4 style={{ fontSize: "1em", marginBottom: 4 }}>
+                <div className="opp-text">
+                  <h4>
                     {opp.name}{" "}
-                    <span
-                      style={{ color: "var(--text-muted)", fontWeight: 400 }}
-                    >
-                      ({opp.symbol})
-                    </span>
+                    <span className="opp-ticker">({opp.symbol})</span>
                   </h4>
-                  <p
-                    style={{
-                      fontSize: "0.8em",
-                      color: "var(--text-secondary)",
-                    }}
-                  >
-                    {opp.reason}
-                  </p>
+                  <p>{opp.reason}</p>
                 </div>
-                <div style={{ textAlign: "right" }}>
-                  <div
-                    className="pem-score pem-high"
-                    style={{ marginBottom: 8 }}
-                  >
-                    {opp.pem}
-                  </div>
+              </div>
+
+              <div className="opp-metrics">
+                <div className="opp-metric">
+                  <div className="pem-score pem-high">{opp.pem}</div>
                   <span
-                    style={{
-                      fontSize: "0.75em",
-                      color: convictionColor,
-                      fontWeight: 500,
-                    }}
+                    className="opp-conviction"
+                    style={{ color: convictionColor }}
                   >
                     {opp.conviction} Conviction
                   </span>
                 </div>
-                <div style={{ textAlign: "right" }}>
-                  <div
-                    style={{
-                      fontSize: "1.1em",
-                      fontWeight: 600,
-                      color: "var(--accent-emerald)",
-                    }}
-                  >
-                    +{opp.upside}%
-                  </div>
-                  <div
-                    style={{ fontSize: "0.7em", color: "var(--text-muted)" }}
-                  >
-                    Upside
-                  </div>
+                <div className="opp-metric opp-upside">
+                  <div className="opp-upside-value">+{opp.upside}%</div>
+                  <div className="opp-upside-label">Upside</div>
                 </div>
               </div>
             </div>
@@ -686,127 +660,131 @@ export function SectionOpportunities({ onOpenModal, onAskAI, activeList }) {
   );
 }
 
-// ── Risk Engine ───────────────────────────────────────────────
+/* ── Risk Engine ──────────────────────────────────────────── */
 
 export function RiskChart() {
   const canvasRef = useRef(null);
+  const wrapperRef = useRef(null);
+  const chartRef = useRef(null);
+  const isNarrow = useMediaQuery("(max-width: 1280px)");
+  const isMobile = useMediaQuery("(max-width: 768px)");
 
   useEffect(() => {
     const ctx = canvasRef.current;
-    let myRiskChart = null;
+    if (!ctx) return;
+    let chart = null;
+    let cancelled = false;
 
-    if (ctx) {
-      myRiskChart = new Chart(ctx, {
-        type: "doughnut", // Replaces Highcharts pie + innerSize
-        data: {
-          labels: [
-            "Market Risk",
-            "Concentration",
-            "Volatility",
-            "Liquidity",
-            "Credit",
-          ],
-          datasets: [
-            {
-              label: "Risk Breakdown",
-              data: [35, 25, 20, 12, 8],
-              backgroundColor: [
-                "#ef4444",
-                "#f59e0b",
-                "#8b5cf6",
-                "#3b82f6",
-                "#10b981",
-              ],
-              borderWidth: 0,
-            },
-          ],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          cutout: "60%", // Replaces Highcharts innerSize: "60%"
-          plugins: {
-            legend: {
-              display: true,
-              position: "right", // Vertical right alignment
-              labels: {
-                color: "#94a3b8",
-                boxWidth: 12,
-                padding: 15,
-                font: { family: "Inter, sans-serif" },
+    // Defer past StrictMode's synchronous mount→unmount→mount cycle
+    const raf = requestAnimationFrame(() => {
+      if (cancelled || !ctx.isConnected) return;
+      try {
+        chart = new Chart(ctx, {
+          type: "doughnut",
+          data: {
+            labels: [
+              "Market Risk",
+              "Concentration",
+              "Volatility",
+              "Liquidity",
+              "Credit",
+            ],
+            datasets: [
+              {
+                label: "Risk Breakdown",
+                data: [35, 25, 20, 12, 8],
+                backgroundColor: [
+                  "#ef4444",
+                  "#f59e0b",
+                  "#8b5cf6",
+                  "#3b82f6",
+                  "#10b981",
+                ],
+                borderWidth: 0,
+                hoverOffset: 6,
               },
-            },
-            tooltip: {
-              backgroundColor: "#1a2332",
-              borderColor: "rgba(255,255,255,0.08)",
-              borderWidth: 1,
-              titleColor: "#f8fafc",
-              bodyColor: "#f8fafc",
-              callbacks: {
-                label: (context) => ` ${context.label}: ${context.raw}%`,
+            ],
+          },
+          options: {
+            responsive: false,
+            maintainAspectRatio: false,
+            animation: false,
+            resizeDelay: 100,
+            cutout: isMobile ? "55%" : "60%",
+            layout: { padding: 4 },
+            plugins: {
+              legend: {
+                display: true,
+                position: isNarrow ? "bottom" : "right",
+                labels: {
+                  color: "#94a3b8",
+                  boxWidth: 10,
+                  boxHeight: 10,
+                  padding: isMobile ? 10 : 15,
+                  usePointStyle: true,
+                  font: {
+                    family: "Inter, sans-serif",
+                    size: isMobile ? 10 : 12,
+                  },
+                },
+              },
+              tooltip: {
+                backgroundColor: "#1a2332",
+                borderColor: "rgba(255,255,255,0.08)",
+                borderWidth: 1,
+                titleColor: "#f8fafc",
+                bodyColor: "#f8fafc",
+                padding: 10,
+                callbacks: { label: (c) => ` ${c.label}: ${c.raw}%` },
               },
             },
           },
-        },
-      });
-    }
+        });
+        chartRef.current = chart;
+      } catch (err) {
+        console.error("Chart init failed:", err);
+      }
+    });
 
-    // Clean up chart instance cleanly on unmount to avoid canvas collision
     return () => {
-      if (myRiskChart) {
-        myRiskChart.destroy();
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      chartRef.current = null;
+      if (chart) {
+        try {
+          chart.destroy();
+        } catch {}
+        chart = null;
       }
     };
   }, []);
 
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart || !chart.ctx) return;
+    chart.options.cutout = isMobile ? "60%" : "65%";
+    chart.options.plugins.legend.position = isNarrow ? "bottom" : "right";
+    chart.options.plugins.legend.labels.padding = isMobile ? 10 : 15;
+    chart.options.plugins.legend.labels.font.size = isMobile ? 10 : 12;
+    try {
+      chart.update("none"); // "none" = no animation, no deferral
+    } catch {}
+  }, [isNarrow, isMobile]);
+
+  useChartResize(chartRef, wrapperRef, []);
+
   return (
-    <div style={{ height: "100%", width: "100%" }}>
+    <div ref={wrapperRef} className="canvas-wrap">
       <canvas ref={canvasRef} />
     </div>
   );
 }
 
 export function SectionRisk({ onOpenModal, onAskAI }) {
-  const [risk, setRisk] = useState("");
-  const [isLoadingRisk, setIsLoadingRisk] = useState(false);
-  const CACHE_KEY = "risk_summury";
-
-  const fetchRisk = async (forceRefresh = false) => {
-    // 1. If not a forced refresh, look for data inside the cache first
-    if (!forceRefresh) {
-      const cachedData = sessionStorage.getItem(CACHE_KEY);
-      if (cachedData) {
-        setRisk(cachedData);
-        return; // Exit early, no API call needed!
-      }
-    }
-
-    // 2. Fetch fresh data if cache missed or if user clicked Refresh
-    try {
-      setIsLoadingRisk(true);
-
-      const response = await sendChatMessage(
-        "What are the main risks in my portfolio?",
-      );
-
-      // Update local state and save to cache
-      setRisk(response);
-      sessionStorage.setItem(CACHE_KEY, response);
-    } catch (error) {
-      console.error("Error fetching market summary:", error);
-      // Fallback message if there's no pre-existing text to show
-      if (!marketSummary) {
-        setRisk("Unable to load the market summary at this time.");
-      }
-    } finally {
-      setIsLoadingRisk(false);
-    }
-  };
-
-  // Run automatically on page load / component mount
-  useEffect(() => {
-    fetchRisk(false);
-  }, []);
+  const { text: risk, loading: isLoadingRisk } = useCachedInsight(
+    "risk_summary",
+    "What are the main risks in my portfolio?",
+  );
 
   return (
     <section id="risk" className="section active">
@@ -814,49 +792,40 @@ export function SectionRisk({ onOpenModal, onAskAI }) {
         <div className="header-left">
           <h2>
             <i
-              className="fas fa-shield-alt"
-              style={{ color: "var(--accent-rose)", marginRight: 12 }}
+              className="fas fa-shield-alt section-title-icon"
+              style={{ color: "var(--accent-rose)" }}
             ></i>
             Risk Engine
           </h2>
           <p>{`"What is going wrong?" — AI-powered risk monitoring`}</p>
         </div>
-        <div className="header-right">
+        <div className="header-right header-actions">
           <button className="btn btn-secondary">
-            <i className="fas fa-bell"></i> Manage Alerts
+            <i className="fas fa-bell"></i> <span>Manage Alerts</span>
           </button>
           <button
             className="btn btn-primary"
             onClick={() => onAskAI("What are the main risks in my portfolio?")}
           >
-            <i className="fas fa-robot"></i> Ask AI
+            <i className="fas fa-robot"></i> <span>Ask AI</span>
           </button>
         </div>
       </div>
 
-      <div
-        className="chart-card"
-        style={{ marginBottom: 24, borderLeft: "4px solid var(--accent-rose)" }}
-      >
-        <h3 style={{ marginBottom: 12 }}>
+      <div className="chart-card insight-card insight-rose">
+        <h3 className="insight-title">
           <i
             className="fas fa-brain"
-            style={{ color: "var(--accent-cyan)", marginRight: 8 }}
+            style={{ color: "var(--accent-cyan)" }}
           ></i>
           AI Risk Assessment
         </h3>
-        <p
-          style={{
-            fontSize: "0.9em",
-            lineHeight: 1.7,
-            color: "var(--text-secondary)",
-          }}
-        >
+        <p className="insight-body">
           {isLoadingRisk ? (
-            <span style={{ opacity: 0.6, fontStyle: "italic" }}>
+            <span className="insight-loading">
               Generating live market insights...
             </span>
-          ) : risk.includes("I currently do not have access") ? (
+          ) : risk.includes(NO_ACCESS) ? (
             <span>
               Overall portfolio risk is{" "}
               <strong style={{ color: "var(--accent-amber)" }}>MODERATE</strong>
@@ -902,7 +871,8 @@ export function SectionRisk({ onOpenModal, onAskAI }) {
             3
           </div>
           <div className="stat-change negative">
-            <i className="fas fa-arrow-up"></i>Requires attention
+            <i className="fas fa-arrow-up"></i>
+            <span>Requires attention</span>
           </div>
         </div>
         <div className="stat-card">
@@ -944,36 +914,24 @@ export function SectionRisk({ onOpenModal, onAskAI }) {
         </div>
       </div>
 
-      <div className="two-column" style={{ marginTop: 24 }}>
+      <div className="two-column section-gap">
         <div className="chart-card">
           <div className="chart-header">
             <h3>
               <i
-                className="fas fa-exclamation-circle"
-                style={{ color: "var(--accent-rose)", marginRight: 8 }}
+                className="fas fa-exclamation-circle section-title-icon"
+                style={{ color: "var(--accent-rose)" }}
               ></i>
               Active Risk Alerts
             </h3>
           </div>
           {riskData.alerts.map((alert, i) => {
-            const borderColor =
+            const tone =
               alert.severity === "high"
-                ? "var(--accent-rose)"
+                ? "rose"
                 : alert.severity === "medium"
-                  ? "var(--accent-amber)"
-                  : "var(--accent-blue)";
-            const iconBg =
-              alert.severity === "high"
-                ? "rgba(239,68,68,0.2)"
-                : alert.severity === "medium"
-                  ? "rgba(245,158,11,0.2)"
-                  : "rgba(59,130,246,0.2)";
-            const iconColor =
-              alert.severity === "high"
-                ? "var(--accent-rose)"
-                : alert.severity === "medium"
-                  ? "var(--accent-amber)"
-                  : "var(--accent-blue)";
+                  ? "amber"
+                  : "blue";
             const iconName =
               alert.type === "divergence"
                 ? "exclamation-triangle"
@@ -981,62 +939,18 @@ export function SectionRisk({ onOpenModal, onAskAI }) {
                   ? "layer-group"
                   : "chart-area";
             return (
-              <div
-                key={i}
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  padding: 16,
-                  background: "var(--bg-tertiary)",
-                  borderRadius: 10,
-                  marginBottom: 12,
-                  borderLeft: `3px solid ${borderColor}`,
-                }}
-              >
-                <div
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 8,
-                    background: iconBg,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    marginRight: 12,
-                  }}
-                >
-                  <i
-                    className={`fas fa-${iconName}`}
-                    style={{ color: iconColor }}
-                  ></i>
+              <div key={i} className={`risk-alert risk-alert-${tone}`}>
+                <div className="risk-alert-icon">
+                  <i className={`fas fa-${iconName}`}></i>
                 </div>
-                <div style={{ flex: 1 }}>
-                  <div
-                    style={{
-                      fontWeight: 600,
-                      fontSize: "0.85em",
-                      marginBottom: 4,
-                    }}
-                  >
+                <div className="risk-alert-body">
+                  <div className="risk-alert-title">
                     {alert.title}
                     {alert.stock ? ` - ${alert.stock}` : ""}
                   </div>
-                  <div
-                    style={{
-                      fontSize: "0.75em",
-                      color: "var(--text-secondary)",
-                      marginBottom: 8,
-                    }}
-                  >
-                    {alert.message}
-                  </div>
-                  <div
-                    style={{ fontSize: "0.7em", color: "var(--accent-cyan)" }}
-                  >
-                    <i
-                      className="fas fa-lightbulb"
-                      style={{ marginRight: 4 }}
-                    ></i>
+                  <div className="risk-alert-msg">{alert.message}</div>
+                  <div className="risk-alert-action">
+                    <i className="fas fa-lightbulb"></i>
                     {alert.action}
                   </div>
                 </div>
@@ -1044,74 +958,53 @@ export function SectionRisk({ onOpenModal, onAskAI }) {
             );
           })}
         </div>
+
         <div className="chart-card">
           <div className="chart-header">
             <h3>
               <i
-                className="fas fa-chart-bar"
-                style={{ color: "var(--accent-blue)", marginRight: 8 }}
+                className="fas fa-chart-bar section-title-icon"
+                style={{ color: "var(--accent-blue)" }}
               ></i>
               Risk by Category
             </h3>
           </div>
-          <div className="chart-container" style={{ height: 250 }}>
+          <div className="chart-container risk-chart-container">
             <RiskChart />
           </div>
         </div>
       </div>
 
-      <div className="chart-card" style={{ marginTop: 24 }}>
+      <div className="chart-card section-gap">
         <div className="chart-header">
           <h3>
             <i
-              className="fas fa-th"
-              style={{ color: "var(--accent-purple)", marginRight: 8 }}
+              className="fas fa-th section-title-icon"
+              style={{ color: "var(--accent-purple)" }}
             ></i>
             Position Risk Heatmap
           </h3>
         </div>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(9, 1fr)",
-            gap: 8,
-          }}
-        >
+
+        <div className="heatmap-grid">
           {riskPositions.map((p) => {
-            const color =
-              p.risk > 60
-                ? "rgba(239,68,68,0.6)"
-                : p.risk > 40
-                  ? "rgba(245,158,11,0.6)"
-                  : "rgba(16,185,129,0.6)";
+            const tone = p.risk > 60 ? "high" : p.risk > 40 ? "medium" : "low";
             return (
               <div
                 key={p.symbol}
-                style={{ textAlign: "center", cursor: "pointer" }}
+                className="heatmap-cell"
+                role="button"
+                tabIndex={0}
                 onClick={() => onOpenModal(p.symbol)}
+                onKeyDown={(e) => e.key === "Enter" && onOpenModal(p.symbol)}
               >
-                <div
-                  style={{
-                    width: "100%",
-                    aspectRatio: 1,
-                    background: color,
-                    borderRadius: 8,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    marginBottom: 6,
-                  }}
-                >
-                  <span style={{ fontWeight: 700, fontSize: "0.9em" }}>
-                    {p.symbol}
-                  </span>
+                <div className={`heatmap-tile heatmap-${tone}`}>
+                  <span>{p.symbol}</span>
                 </div>
-                <div style={{ fontSize: "0.65em", color: "var(--text-muted)" }}>
-                  Risk: {p.risk}
-                </div>
+                <div className="heatmap-risk">Risk: {p.risk}</div>
                 <div
+                  className="heatmap-return"
                   style={{
-                    fontSize: "0.65em",
                     color:
                       p.return >= 0
                         ? "var(--accent-emerald)"
@@ -1125,103 +1018,38 @@ export function SectionRisk({ onOpenModal, onAskAI }) {
             );
           })}
         </div>
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            gap: 24,
-            marginTop: 16,
-            fontSize: "0.7em",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <div
-              style={{
-                width: 12,
-                height: 12,
-                background: "rgba(16,185,129,0.6)",
-                borderRadius: 2,
-              }}
-            ></div>{" "}
-            Low Risk
+
+        <div className="heatmap-legend">
+          <div className="legend-item">
+            <span className="legend-swatch heatmap-low"></span> Low Risk
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <div
-              style={{
-                width: 12,
-                height: 12,
-                background: "rgba(245,158,11,0.6)",
-                borderRadius: 2,
-              }}
-            ></div>{" "}
-            Medium Risk
+          <div className="legend-item">
+            <span className="legend-swatch heatmap-medium"></span> Medium Risk
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <div
-              style={{
-                width: 12,
-                height: 12,
-                background: "rgba(239,68,68,0.6)",
-                borderRadius: 2,
-              }}
-            ></div>{" "}
-            High Risk
+          <div className="legend-item">
+            <span className="legend-swatch heatmap-high"></span> High Risk
           </div>
         </div>
       </div>
 
-      <div className="chart-card" style={{ marginTop: 24 }}>
+      <div className="chart-card section-gap">
         <div className="chart-header">
           <h3>
             <i
-              className="fas fa-lightbulb"
-              style={{ color: "var(--accent-amber)", marginRight: 8 }}
+              className="fas fa-lightbulb section-title-icon"
+              style={{ color: "var(--accent-amber)" }}
             ></i>
             AI Mitigation Suggestions
           </h3>
         </div>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
-            gap: 16,
-          }}
-        >
+        <div className="suggestion-grid">
           {riskData.suggestions.map((s, i) => (
-            <div
-              key={i}
-              style={{
-                background: "var(--bg-tertiary)",
-                padding: 20,
-                borderRadius: 10,
-              }}
-            >
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  marginBottom: 12,
-                }}
-              >
-                <i
-                  className={`fas ${s.icon}`}
-                  style={{ color: "var(--accent-amber)", fontSize: "1.2em" }}
-                ></i>
-                <span style={{ fontWeight: 600, fontSize: "0.85em" }}>
-                  {s.title}
-                </span>
+            <div key={i} className="suggestion-card">
+              <div className="suggestion-head">
+                <i className={`fas ${s.icon}`}></i>
+                <span>{s.title}</span>
               </div>
-              <p
-                style={{
-                  fontSize: "0.8em",
-                  color: "var(--text-secondary)",
-                  margin: 0,
-                  lineHeight: 1.5,
-                }}
-              >
-                {s.text}
-              </p>
+              <p>{s.text}</p>
             </div>
           ))}
         </div>
@@ -1230,87 +1058,169 @@ export function SectionRisk({ onOpenModal, onAskAI }) {
   );
 }
 
-// ── Stocks Section ────────────────────────────────────────────
+/* ── Market Chart ─────────────────────────────────────────── */
 
 export function MarketChart() {
   const canvasRef = useRef(null);
+  const wrapperRef = useRef(null);
+  const chartRef = useRef(null);
+  const isMobile = useMediaQuery("(max-width: 768px)");
 
   useEffect(() => {
     const ctx = canvasRef.current;
-    let myMarketChart = null;
+    if (!ctx) return;
 
-    if (ctx) {
-      myMarketChart = new Chart(ctx, {
-        type: "line",
-        data: {
-          labels: [
-            "9:30",
-            "10:00",
-            "10:30",
-            "11:00",
-            "11:30",
-            "12:00",
-            "12:30",
-            "1:00",
-            "1:30",
-            "2:00",
-            "2:30",
-            "3:00",
-            "3:30",
-            "4:00",
-          ],
-          datasets: [
-            {
-              label: "S&P 500",
-              data: [
-                5200, 5215, 5220, 5210, 5230, 5245, 5238, 5250, 5245, 5260,
-                5255, 5270, 5265, 5278,
-              ],
-              borderColor: "#10b981",
-              backgroundColor: "rgba(16, 185, 129, 0.1)",
-              fill: true,
-              tension: 0.4,
-              pointRadius: 0,
-            },
-          ],
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          plugins: {
-            legend: { display: false },
-          },
-          scales: {
-            x: {
-              grid: { color: "rgba(148, 163, 184, 0.1)" },
-              ticks: { color: "#94a3b8", maxTicksLimit: 7 },
-            },
-            y: {
-              grid: { color: "rgba(148, 163, 184, 0.1)" },
-              ticks: { color: "#94a3b8" },
-            },
-          },
-        },
-      });
-    }
+    let chart = null;
+    let cancelled = false;
 
-    // Clean up chart instance to prevent canvas collision errors on hot-reload or unmount
+    const raf = requestAnimationFrame(() => {
+      if (cancelled || !ctx.isConnected) return;
+      try {
+        chart = new Chart(ctx, {
+          type: "line",
+          data: {
+            labels: [
+              "9:30",
+              "10:00",
+              "10:30",
+              "11:00",
+              "11:30",
+              "12:00",
+              "12:30",
+              "1:00",
+              "1:30",
+              "2:00",
+              "2:30",
+              "3:00",
+              "3:30",
+              "4:00",
+            ],
+            datasets: [
+              {
+                label: "S&P 500",
+                data: [
+                  5200, 5215, 5220, 5210, 5230, 5245, 5238, 5250, 5245, 5260,
+                  5255, 5270, 5265, 5278,
+                ],
+                borderColor: "#10b981",
+                backgroundColor: "rgba(16, 185, 129, 0.1)",
+                fill: true,
+                tension: 0.4,
+                borderWidth: isMobile ? 2 : 2.5,
+                pointRadius: 0,
+                pointHitRadius: 20,
+              },
+            ],
+          },
+          options: {
+            responsive: false,
+            maintainAspectRatio: false,
+            animation: false,
+            resizeDelay: 100,
+            interaction: { mode: "index", intersect: false },
+            plugins: {
+              legend: { display: false },
+              tooltip: {
+                backgroundColor: "#1a2332",
+                borderColor: "rgba(255,255,255,0.08)",
+                borderWidth: 1,
+                titleColor: "#f8fafc",
+                bodyColor: "#94a3b8",
+                padding: 10,
+              },
+            },
+            scales: {
+              x: {
+                grid: { color: "rgba(148, 163, 184, 0.1)", drawTicks: false },
+                ticks: {
+                  color: "#94a3b8",
+                  font: { size: isMobile ? 9 : 11 },
+                  maxRotation: 0,
+                  maxTicksLimit: isMobile ? 4 : 7,
+                },
+              },
+              y: {
+                grid: { color: "rgba(148, 163, 184, 0.1)", drawTicks: false },
+                ticks: {
+                  color: "#94a3b8",
+                  font: { size: isMobile ? 9 : 11 },
+                  maxTicksLimit: isMobile ? 4 : 6,
+                  padding: 6,
+                },
+              },
+            },
+          },
+        });
+        chartRef.current = chart;
+      } catch (err) {
+        console.error("Chart init failed:", err);
+      }
+    });
+
     return () => {
-      if (myMarketChart) {
-        myMarketChart.destroy();
+      cancelled = true;
+      cancelAnimationFrame(raf);
+      chartRef.current = null;
+      if (chart) {
+        try {
+          chart.destroy();
+        } catch {}
+        chart = null;
       }
     };
   }, []);
 
+  useChartResize(chartRef, wrapperRef, [isMobile]);
+
   return (
-    <div style={{ height: "100%", width: "100%" }}>
+    <div ref={wrapperRef} className="canvas-wrap">
       <canvas ref={canvasRef} />
     </div>
   );
 }
 
+/* ── Stocks Section ───────────────────────────────────────── */
+
 export function SectionStocks({ onOpenModal, activeList }) {
   const list = activeList && activeList.length > 0 ? activeList : stocksData;
+
+  const columns = [
+    {
+      key: "stock",
+      label: "Stock",
+      render: (s) => (
+        <div className="stock-info">
+          <div className="stock-logo">{s.symbol.slice(0, 2)}</div>
+          <div className="stock-details">
+            <h4>{s.symbol}</h4>
+            <span>{s.name}</span>
+          </div>
+        </div>
+      ),
+    },
+    { key: "price", label: "Price", render: (s) => `$${s.price.toFixed(2)}` },
+    {
+      key: "change",
+      label: "Change",
+      render: (s) => (
+        <span className={`price-change ${getChangeClass(s.change)}`}>
+          {getChangeSign(s.change)}
+          {s.change.toFixed(2)}%
+        </span>
+      ),
+    },
+    { key: "mcap", label: "Market Cap", render: (s) => s.marketCap },
+    { key: "pe", label: "P/E", render: (s) => s.pe?.toFixed(1) },
+    { key: "eps", label: "EPS", render: (s) => `$${s.eps?.toFixed(2)}` },
+    {
+      key: "pem",
+      label: "PEM Score",
+      render: (s) => (
+        <div className={`pem-score ${getPemClass(s.pem)}`}>{s.pem}</div>
+      ),
+    },
+  ];
+
   return (
     <section id="stocks" className="section active">
       <div className="header">
@@ -1321,10 +1231,15 @@ export function SectionStocks({ onOpenModal, activeList }) {
         <div className="header-right">
           <div className="search-box">
             <i className="fas fa-search"></i>
-            <input type="text" placeholder="Search by ticker or name..." />
+            <input
+              type="text"
+              placeholder="Search by ticker or name..."
+              aria-label="Search stocks"
+            />
           </div>
         </div>
       </div>
+
       <div className="charts-row">
         <div className="chart-card">
           <div className="chart-header">
@@ -1344,92 +1259,34 @@ export function SectionStocks({ onOpenModal, activeList }) {
             <MarketChart />
           </div>
         </div>
+
         <div className="chart-card">
           <div className="chart-header">
             <h3>Market Sentiment</h3>
           </div>
-          <div
-            className="chart-container"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <div style={{ textAlign: "center" }}>
-              <div
-                style={{
-                  fontSize: "4em",
-                  fontWeight: 700,
-                  color: "var(--accent-emerald)",
-                }}
-              >
-                +67%
-              </div>
-              <p style={{ color: "var(--text-muted)", fontSize: "0.85em" }}>
-                Bullish Sentiment
-              </p>
-              <div
-                style={{
-                  display: "flex",
-                  gap: 20,
-                  justifyContent: "center",
-                  marginTop: 20,
-                }}
-              >
-                <div>
-                  <div
-                    style={{
-                      fontSize: "1.5em",
-                      fontWeight: 600,
-                      color: "var(--accent-emerald)",
-                    }}
-                  >
-                    67%
-                  </div>
-                  <div
-                    style={{ fontSize: "0.7em", color: "var(--text-muted)" }}
-                  >
-                    Bullish
-                  </div>
+          <div className="chart-container sentiment-container">
+            <div className="sentiment-block">
+              <div className="sentiment-headline">+67%</div>
+              <p className="sentiment-caption">Bullish Sentiment</p>
+              <div className="sentiment-splits">
+                <div className="sentiment-split">
+                  <div style={{ color: "var(--accent-emerald)" }}>67%</div>
+                  <span>Bullish</span>
                 </div>
-                <div>
-                  <div
-                    style={{
-                      fontSize: "1.5em",
-                      fontWeight: 600,
-                      color: "var(--text-muted)",
-                    }}
-                  >
-                    21%
-                  </div>
-                  <div
-                    style={{ fontSize: "0.7em", color: "var(--text-muted)" }}
-                  >
-                    Neutral
-                  </div>
+                <div className="sentiment-split">
+                  <div style={{ color: "var(--text-muted)" }}>21%</div>
+                  <span>Neutral</span>
                 </div>
-                <div>
-                  <div
-                    style={{
-                      fontSize: "1.5em",
-                      fontWeight: 600,
-                      color: "var(--accent-rose)",
-                    }}
-                  >
-                    12%
-                  </div>
-                  <div
-                    style={{ fontSize: "0.7em", color: "var(--text-muted)" }}
-                  >
-                    Bearish
-                  </div>
+                <div className="sentiment-split">
+                  <div style={{ color: "var(--accent-rose)" }}>12%</div>
+                  <span>Bearish</span>
                 </div>
               </div>
             </div>
           </div>
         </div>
       </div>
+
       <div className="holdings-card">
         <div className="table-header">
           <h3>All Stocks</h3>
@@ -1442,86 +1299,37 @@ export function SectionStocks({ onOpenModal, activeList }) {
             </button>
           </div>
         </div>
-        <table>
-          <thead>
-            <tr>
-              <th>Stock</th>
-              <th>Price</th>
-              <th>Change</th>
-              <th>Market Cap</th>
-              <th>P/E</th>
-              <th>EPS</th>
-              <th>PEM Score</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.map((stock) => {
-              const pemClass = getPemClass(stock.pem);
-              const chClass = getChangeClass(stock.change);
-              const chSign = getChangeSign(stock.change);
-              return (
-                <tr
-                  key={stock.symbol}
-                  onClick={() => onOpenModal(stock.symbol)}
-                  style={{ cursor: "pointer" }}
-                >
-                  <td>
-                    <div className="stock-info">
-                      <div className="stock-logo">
-                        {stock.symbol.slice(0, 2)}
-                      </div>
-                      <div className="stock-details">
-                        <h4>{stock.symbol}</h4>
-                        <span>{stock.name}</span>
-                      </div>
-                    </div>
-                  </td>
-                  <td>${stock.price.toFixed(2)}</td>
-                  <td className={`price-change ${chClass}`}>
-                    {chSign}
-                    {stock.change.toFixed(2)}%
-                  </td>
-                  <td>{stock.marketCap}</td>
-                  <td>{stock.pe.toFixed(1)}</td>
-                  <td>${stock.eps.toFixed(2)}</td>
-                  <td>
-                    <div className={`pem-score ${pemClass}`}>{stock.pem}</div>
-                  </td>
-                  <td>
-                    <button
-                      className="btn btn-secondary"
-                      style={{ padding: "6px 12px", fontSize: "0.7em" }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onOpenModal(stock.symbol);
-                      }}
-                    >
-                      Analyze
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <ResponsiveStockTable
+          data={list}
+          columns={columns}
+          onRowClick={onOpenModal}
+          minWidth={860}
+          action={(s) => (
+            <button
+              className="btn btn-secondary table-action-btn"
+              onClick={() => onOpenModal(s.symbol)}
+            >
+              Analyze
+            </button>
+          )}
+        />
       </div>
     </section>
   );
 }
 
-// ── Screener Section ──────────────────────────────────────────
+/* ── Screener Section ─────────────────────────────────────── */
 
-export function SectionScreener({ onOpenModal, activeList, allStocksData }) {
+export function SectionScreener({ onOpenModal, activeList }) {
   const baseList =
     activeList && activeList.length > 0 ? activeList : stocksData;
-  // allStocksData && allStocksData.length > 0
-  //   ? allStocksData
-  
+
   const [filterMarketCap, setFilterMarketCap] = useState("All Sizes");
   const [filterPEM, setFilterPEM] = useState("All Scores");
   const [filterSector, setFilterSector] = useState("All Sectors");
   const [filterChange, setFilterChange] = useState("Any");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const isMobile = useMediaQuery("(max-width: 768px)");
 
   const filterDefs = [
     {
@@ -1561,6 +1369,13 @@ export function SectionScreener({ onOpenModal, activeList, allStocksData }) {
     },
   ];
 
+  const activeFilterCount = [
+    filterMarketCap !== "All Sizes",
+    filterPEM !== "All Scores",
+    filterSector !== "All Sectors",
+    filterChange !== "Any",
+  ].filter(Boolean).length;
+
   const filteredList = baseList
     .filter((stock) => {
       if (filterMarketCap !== "All Sizes") {
@@ -1584,11 +1399,7 @@ export function SectionScreener({ onOpenModal, activeList, allStocksData }) {
       }
       if (filterSector !== "All Sectors") {
         const sector = (stock.sector || "").toLowerCase();
-        if (filterSector === "Consumer") {
-          if (!sector.includes("consumer")) return false;
-        } else {
-          if (!sector.includes(filterSector.toLowerCase())) return false;
-        }
+        if (!sector.includes(filterSector.toLowerCase())) return false;
       }
       if (filterChange !== "Any") {
         if (filterChange === "+5% or more" && stock.change < 5) return false;
@@ -1599,6 +1410,44 @@ export function SectionScreener({ onOpenModal, activeList, allStocksData }) {
     })
     .sort((a, b) => b.pem - a.pem);
 
+  const columns = [
+    {
+      key: "stock",
+      label: "Stock",
+      render: (s) => (
+        <div className="stock-info">
+          <div className="stock-logo">{s.symbol.slice(0, 2)}</div>
+          <div className="stock-details">
+            <h4>{s.symbol}</h4>
+            <span>{s.name}</span>
+          </div>
+        </div>
+      ),
+    },
+    { key: "price", label: "Price", render: (s) => `$${s.price.toFixed(2)}` },
+    {
+      key: "change",
+      label: "Change",
+      render: (s) => (
+        <span className={`price-change ${getChangeClass(s.change)}`}>
+          {getChangeSign(s.change)}
+          {s.change.toFixed(2)}%
+        </span>
+      ),
+    },
+    { key: "mcap", label: "Market Cap", render: (s) => s.marketCap },
+    { key: "pe", label: "P/E", render: (s) => s.pe?.toFixed(1) },
+    {
+      key: "pem",
+      label: "PEM Score",
+      render: (s) => (
+        <div className={`pem-score ${getPemClass(s.pem)}`}>{s.pem}</div>
+      ),
+    },
+  ];
+
+  const showFilters = !isMobile || filtersOpen;
+
   return (
     <section id="screener" className="section active">
       <div className="header">
@@ -1607,117 +1456,75 @@ export function SectionScreener({ onOpenModal, activeList, allStocksData }) {
           <p>Filter stocks by custom criteria</p>
         </div>
       </div>
-      <div className="chart-card" style={{ marginBottom: 24 }}>
-        <h3 style={{ marginBottom: 20 }}>Filter Criteria</h3>
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",
-            gap: 16,
-          }}
+
+      <div className="chart-card screener-card">
+        <button
+          className="screener-toggle"
+          type="button"
+          onClick={() => isMobile && setFiltersOpen((o) => !o)}
+          aria-expanded={showFilters}
         >
-          {filterDefs.map((f) => (
-            <div key={f.label}>
-              <label
-                style={{
-                  fontSize: "0.7em",
-                  color: "var(--text-muted)",
-                  display: "block",
-                  marginBottom: 8,
-                }}
-              >
-                {f.label}
-              </label>
-              <select
-                value={f.value}
-                onChange={(e) => f.onChange(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: 10,
-                  background: "var(--bg-tertiary)",
-                  border: "1px solid var(--border-color)",
-                  borderRadius: 8,
-                  color: "var(--text-primary)",
-                  fontSize: "0.85em",
-                  fontFamily: "inherit",
-                }}
-              >
-                {f.opts.map((o) => (
-                  <option key={o}>{o}</option>
-                ))}
-              </select>
-            </div>
-          ))}
-        </div>
-        <button className="btn btn-primary" style={{ marginTop: 20 }}>
-          <i className="fas fa-search"></i> Apply Filters
+          <h3>Filter Criteria</h3>
+          {activeFilterCount > 0 && (
+            <span className="filter-count">{activeFilterCount}</span>
+          )}
+          <i
+            className={`fas fa-chevron-down screener-chevron${
+              filtersOpen ? " open" : ""
+            }`}
+          ></i>
         </button>
+
+        {showFilters && (
+          <>
+            <div className="filter-grid">
+              {filterDefs.map((f) => (
+                <div key={f.label} className="filter-field">
+                  <label htmlFor={`filter-${f.label}`}>{f.label}</label>
+                  <select
+                    id={`filter-${f.label}`}
+                    value={f.value}
+                    onChange={(e) => f.onChange(e.target.value)}
+                  >
+                    {f.opts.map((o) => (
+                      <option key={o}>{o}</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+            <button className="btn btn-primary screener-apply">
+              <i className="fas fa-search"></i> Apply Filters
+            </button>
+          </>
+        )}
       </div>
+
       <div className="holdings-card">
         <div className="table-header">
-          <h3>Filtered Results ({filteredList.length} stocks)</h3>
+          <h3>Filtered Results ({filteredList.length})</h3>
         </div>
-        <table>
-          <thead>
-            <tr>
-              <th>Stock</th>
-              <th>Price</th>
-              <th>Change</th>
-              <th>Market Cap</th>
-              <th>P/E</th>
-              <th>PEM Score</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredList.map((stock) => {
-              const pemClass = getPemClass(stock.pem);
-              const chClass = getChangeClass(stock.change);
-              const chSign = getChangeSign(stock.change);
-              return (
-                <tr
-                  key={stock.symbol}
-                  onClick={() => onOpenModal(stock.symbol)}
-                  style={{ cursor: "pointer" }}
-                >
-                  <td>
-                    <div className="stock-info">
-                      <div className="stock-logo">
-                        {stock.symbol.slice(0, 2)}
-                      </div>
-                      <div className="stock-details">
-                        <h4>{stock.symbol}</h4>
-                        <span>{stock.name}</span>
-                      </div>
-                    </div>
-                  </td>
-                  <td>${stock.price.toFixed(2)}</td>
-                  <td className={`price-change ${chClass}`}>
-                    {chSign}
-                    {stock.change.toFixed(2)}%
-                  </td>
-                  <td>{stock.marketCap}</td>
-                  <td>{stock.pe.toFixed(1)}</td>
-                  <td>
-                    <div className={`pem-score ${pemClass}`}>{stock.pem}</div>
-                  </td>
-                  <td>
-                    <button
-                      className="btn btn-secondary"
-                      style={{ padding: "6px 12px", fontSize: "0.7em" }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onOpenModal(stock.symbol);
-                      }}
-                    >
-                      View
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        {filteredList.length === 0 ? (
+          <div className="empty-state">
+            <i className="fas fa-filter"></i>
+            <p>No stocks match these filters.</p>
+          </div>
+        ) : (
+          <ResponsiveStockTable
+            data={filteredList}
+            columns={columns}
+            onRowClick={onOpenModal}
+            minWidth={800}
+            action={(s) => (
+              <button
+                className="btn btn-secondary table-action-btn"
+                onClick={() => onOpenModal(s.symbol)}
+              >
+                View
+              </button>
+            )}
+          />
+        )}
       </div>
     </section>
   );
